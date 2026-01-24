@@ -5,6 +5,8 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Net;
 using System.Net.Sockets;
+using System.IO;
+using System.ComponentModel;
 
 namespace MrezeProjekat.Models
 {
@@ -25,6 +27,51 @@ namespace MrezeProjekat.Models
         public IPEndPoint Sender => this._sender;
         public int NodeNum => this._nodeNum;
         public int MaxMessages => this._maxMessages;
+
+        public byte[] ToBytes()
+        {
+            byte[] addrBytes = this._sender.Address.GetAddressBytes();
+            byte[] portBytes = BitConverter.GetBytes(this._sender.Port);
+
+            using (MemoryStream ms = new MemoryStream())
+            using (BinaryWriter bw = new BinaryWriter(ms))
+            {
+                // lenght IP & IP
+                bw.Write(addrBytes.Length);
+                bw.Write(addrBytes);
+                
+                // Port
+                bw.Write(portBytes);
+
+                // nodeNum & maxMessages
+                bw.Write(this._nodeNum);
+                bw.Write(this._maxMessages);
+                return ms.ToArray();
+            }
+        }
+
+        public static Request FromBytes(byte[] data)
+        {
+            using (MemoryStream ms = new MemoryStream())
+            using (BinaryReader br = new BinaryReader(ms))
+            {
+                // lenght IP & IP
+                int addrLen = br.ReadInt32();
+                byte[] addrBytes = br.ReadBytes(addrLen);
+
+                // Port
+                int port = br.ReadInt32();
+
+                IPAddress ip = new IPAddress(addrBytes);
+                IPEndPoint endPoint = new IPEndPoint(ip, port);
+
+                // nodeNum & maxMessages
+                int nodeNum = br.ReadInt32();
+                int maxMessages = br.ReadInt32();
+
+                return new Request(endPoint, nodeNum, maxMessages);
+            }
+        }
 
     }
 }
