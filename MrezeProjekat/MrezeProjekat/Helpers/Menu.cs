@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace MrezeProjekat.Helpers
 {
-    internal class Menu
+    public class Menu
     {
     }
 }
