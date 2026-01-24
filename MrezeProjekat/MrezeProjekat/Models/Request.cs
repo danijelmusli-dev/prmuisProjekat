@@ -52,7 +52,7 @@ namespace MrezeProjekat.Models
 
         public static Request FromBytes(byte[] data)
         {
-            using (MemoryStream ms = new MemoryStream())
+            using (MemoryStream ms = new MemoryStream(data))
             using (BinaryReader br = new BinaryReader(ms))
             {
                 // lenght IP & IP
