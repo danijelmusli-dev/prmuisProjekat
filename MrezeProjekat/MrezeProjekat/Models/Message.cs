@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace MrezeProjekat.Models
 {
-    internal class Message
+    public class Message
     {
         private string _content;
         private int _lenght;

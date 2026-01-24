@@ -10,7 +10,7 @@ using System.Xml.Linq;
 
 namespace MrezeProjekat.Helpers
 {
-    internal class CryptoHelper
+    public class CryptoHelper
     {
         public static byte[] EncryptStringToBytes(string plainText, byte[] Key, byte[] IV)
         {

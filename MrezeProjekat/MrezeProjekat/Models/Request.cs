@@ -10,7 +10,7 @@ using System.ComponentModel;
 
 namespace MrezeProjekat.Models
 {
-    internal class Request
+    public class Request
     {
         private IPEndPoint _sender;
         private int _nodeNum;

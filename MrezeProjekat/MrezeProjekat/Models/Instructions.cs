@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace MrezeProjekat.Models
 {
-    internal class Instructions
+    public class Instructions
     {
         private string[] _keys;
         private IPEndPoint _prevNode;
