@@ -1,41 +1,46 @@
-﻿using System;
+﻿using MrezeProjekat;
+using MrezeProjekat.Models;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
-
-using MrezeProjekat;
-using MrezeProjekat.Models;
 
 namespace Server
 {
     public class Server
     {
+
         static void Main(string[] args)
         {
-
-            
-
-            Console.ReadKey();
-
-        }
-
-        public Request RecieveRequest()
-        {
+            // napravi server socket jednom
             Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             IPEndPoint serverEP = new IPEndPoint(IPAddress.Any, 50001);
 
+            serverSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             serverSocket.Bind(serverEP);
             serverSocket.Listen(10);
 
+            Console.WriteLine("Waiting for client...");
             Socket acceptedSocket = serverSocket.Accept();
-            IPEndPoint clientEP = acceptedSocket.RemoteEndPoint as IPEndPoint;
-
             Console.WriteLine("Client connected.");
 
+            // koristi funkcije sa prosleđenim socketom
+            Request req = RecieveRequest(acceptedSocket);
+            SendInstructions(acceptedSocket, req);
 
+            // zatvori sve na kraju
+            acceptedSocket.Close();
+            serverSocket.Close();
+
+            Console.ReadKey();
+        }
+
+        public static Request RecieveRequest(Socket acceptedSocket)
+        {
             // primi dužinu (4 bajta)
             byte[] lengthBuffer = new byte[4];
             acceptedSocket.Receive(lengthBuffer);
@@ -51,14 +56,34 @@ namespace Server
             }
 
             Request req = Request.FromBytes(buffer);
-
-            acceptedSocket.Close();
-            serverSocket.Close();
-
             return req;
         }
 
+        public static void SendInstructions(Socket acceptedSocket, Request req)
+        {
+            Instructions ins = new Instructions(req.NodeNum, null, null);
 
+            // generisi kljuceve
+            for (int i = 0; i < req.NodeNum; i++)
+            {
+                using (Aes aes = Aes.Create())
+                {
+                    aes.KeySize = 128;
+                    aes.GenerateKey();
+                    aes.GenerateIV();
+                    ins[i] = new CryptoKey(aes.Key, aes.IV);
+                }
+            }
+
+            byte[] data = ins.ToBytes();
+
+            // prvo pošalji dužinu
+            byte[] lengthBuffer = BitConverter.GetBytes(data.Length);
+            acceptedSocket.Send(lengthBuffer);
+
+            // zatim pošalji podatke
+            acceptedSocket.Send(data);
+        }
 
     }
 }
