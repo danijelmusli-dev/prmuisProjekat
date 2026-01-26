@@ -21,5 +21,15 @@ namespace MrezeProjekat
         public byte[] Key => this._key;
         public byte[] IV  => this._iv;
 
+        public override string ToString()
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.Append("Key: ");
+            builder.Append(Convert.ToBase64String(this.Key));
+            builder.Append(" IV: ");
+            builder.Append(Convert.ToBase64String(this.IV));
+            return builder.ToString();
+        }
+
     }
 }

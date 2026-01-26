@@ -135,4 +135,32 @@ public class Instructions
             return new Instructions(keys, prevNode, nextNode);
         }
     }
+
+    public override string ToString()
+    {
+        StringBuilder builder = new StringBuilder();
+
+        #region PrevNode
+        builder.AppendLine("=> Prev Node ");
+        builder.Append("IPAdress: ");
+        builder.AppendLine(this.PrevNode?.Address?.ToString() ?? "None");
+        builder.Append("Port: ");
+        builder.AppendLine(this.PrevNode?.Port.ToString() ?? "None");
+        #endregion
+        #region NextNode
+        builder.AppendLine("=> Next Node ");
+        builder.Append("IPAdress: ");
+        builder.AppendLine(this.NextNode?.Address?.ToString() ?? "None");
+        builder.Append("Port: ");
+        builder.AppendLine(this.NextNode?.Port.ToString() ?? "None");
+        #endregion
+
+        #region Keys
+        foreach(CryptoKey key in this._keys)
+        {  builder.AppendLine(key.ToString()); }
+        #endregion
+
+        return builder.ToString();
+    }
+
 }
