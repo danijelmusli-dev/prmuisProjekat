@@ -43,11 +43,12 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="CryptoKey.cs" />
+    <Compile Include="Helpers\CryptoKey.cs" />
     <Compile Include="Helpers\CryptoHelper.cs" />
     <Compile Include="Helpers\Menu.cs" />
     <Compile Include="Models\Instructions.cs" />
     <Compile Include="Models\Message.cs" />
+    <Compile Include="Models\OnionNode.cs" />
     <Compile Include="Models\Request.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

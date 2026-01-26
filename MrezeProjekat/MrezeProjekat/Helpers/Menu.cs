@@ -8,5 +8,6 @@ namespace MrezeProjekat.Helpers
 {
     public class Menu
     {
+
     }
 }
