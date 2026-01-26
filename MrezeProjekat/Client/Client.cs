@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 using MrezeProjekat;
+using MrezeProjekat.Helpers;
 using MrezeProjekat.Models;
 
 namespace Client
@@ -24,9 +25,16 @@ namespace Client
 
             // form the request (coming soon)
             // send request to the server
-            SendRequest(clientSocket);
+            // umesto new Request napraviceo f-ju gde korisnik formira zahtev
+            Request req = new Request(null, 3, 5);
+            SendRequest(clientSocket, req);
+
+            // recieve instructions 
             Instructions ins = RecieveInstructions(clientSocket);
             Console.Write(ins.ToString());
+
+            // crypt the message N times
+            Message message = CryptoHelper.CryptNTimes("gas", 3 , ins);
 
             // closing of the socket
             clientSocket.Close();
@@ -34,13 +42,12 @@ namespace Client
             Console.ReadKey();
         }
 
-        public static void SendRequest(Socket clientSocket)
+        public static void SendRequest(Socket clientSocket, Request request)
         {
             IPEndPoint localEP = clientSocket.LocalEndPoint as IPEndPoint;
-            // umesto new Request napraviceo f-ju gde korisnik formira zahtev
-            Request req = new Request(localEP, 3, 5);
+            request.Sender = localEP;
 
-            byte[] data = req.ToBytes();
+            byte[] data = request.ToBytes();
 
             // sending length of data
             byte[] lengthBuffer = BitConverter.GetBytes(data.Length);

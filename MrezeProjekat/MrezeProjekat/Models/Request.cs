@@ -24,7 +24,11 @@ namespace MrezeProjekat.Models
             this._maxMessages = maxMessagesNum;
         }
 
-        public IPEndPoint Sender => this._sender;
+        public IPEndPoint Sender
+        { 
+            get => _sender;
+            set => _sender = value;
+        }
         public int NodeNum => this._nodeNum;
         public int MaxMessages => this._maxMessages;
 

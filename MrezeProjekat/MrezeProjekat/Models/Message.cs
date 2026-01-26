@@ -30,7 +30,11 @@ namespace MrezeProjekat.Models
         }
 
         // Only getters
-        public string Content => _content;
+        public string Content
+        {
+            get => _content;
+            set => _content = value;
+        }
         public int Lenght => _lenght;
         public int CheckSum => _checkSum;
 

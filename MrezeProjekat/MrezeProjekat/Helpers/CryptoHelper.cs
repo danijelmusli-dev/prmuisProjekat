@@ -8,6 +8,9 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 
+using MrezeProjekat;
+using MrezeProjekat.Models;
+
 namespace MrezeProjekat.Helpers
 {
     public class CryptoHelper
@@ -71,6 +74,17 @@ namespace MrezeProjekat.Helpers
                 Console.WriteLine(ex.Message);
                 return string.Empty;
             }
+        }
+
+        public static Message CryptNTimes(string original, int times, Instructions instructions)
+        {
+            Message message = new Message(original);
+            for (int i = 0; i < times; i++)
+            {
+                message.Content = Convert.ToBase64String(CryptoHelper.EncryptStringToBytes(message.Content, instructions[i].Key, instructions[i].IV));
+                Console.WriteLine(message.Content);
+            }
+            return message;
         }
 
     }
