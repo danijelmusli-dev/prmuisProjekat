@@ -24,7 +24,6 @@ namespace Client
 
             // koristi funkcije sa prosleđenim socketom
             SendRequest(clientSocket);
-
             Instructions ins = RecieveInstructions(clientSocket);
 
             // zatvori sve na kraju
