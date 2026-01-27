@@ -5,20 +5,24 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Server
 {
     public class Server
     {
-
+        const int TcpPort = 50001;
+        const int UdpPort = 60001;
+        const int NodeBasePort = 5501;
         static void Main(string[] args)
         {
-            // napravi server socket jednom
+            // Create the server socket (TCP)
             Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            IPEndPoint serverEP = new IPEndPoint(IPAddress.Any, 50001);
+            IPEndPoint serverEP = new IPEndPoint(IPAddress.Any, TcpPort);  
 
             serverSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             serverSocket.Bind(serverEP);
@@ -30,7 +34,12 @@ namespace Server
 
             // koristi funkcije sa prosleđenim socketom
             Request req = RecieveRequest(acceptedSocket);
-            SendInstructions(acceptedSocket, req);
+
+            // send instructions (client only)
+            Instructions ins = SendInstructions(acceptedSocket, req);
+
+            // send instructions for every node
+            SendInstructionsForNodes(ins, req);
 
             // zatvori sve na kraju
             acceptedSocket.Close();
@@ -59,7 +68,7 @@ namespace Server
             return req;
         }
 
-        public static void SendInstructions(Socket acceptedSocket, Request req)
+        public static Instructions SendInstructions(Socket acceptedSocket, Request req)
         {
             Instructions ins = new Instructions(req.NodeNum, null, null);
 
@@ -83,6 +92,36 @@ namespace Server
 
             // zatim pošalji podatke
             acceptedSocket.Send(data);
+
+            return ins;
+        }
+        public static void SendInstructionsForNodes(Instructions ins, Request req)
+        {
+            // send instructions for every node
+            for (int i = 0; i < req.NodeNum; i++)
+            {
+                IPEndPoint nextEP = (i == (req.NodeNum - 1)) ? null : new IPEndPoint(IPAddress.Loopback, NodeBasePort + (i + 1));
+                IPEndPoint prevEP = (i == 0) ? null : new IPEndPoint(IPAddress.Loopback, NodeBasePort + (i - 1));
+                CryptoKey[] nodeKey = new CryptoKey[] { ins[i] };
+
+                Instructions nodeIns = new Instructions(nodeKey,prevEP,nextEP);
+                byte[] data = nodeIns.ToBytes();
+
+                TcpClient node = new TcpClient();
+                node.Connect(IPAddress.Loopback, NodeBasePort + i);
+
+                NetworkStream stream = node.GetStream();
+
+                // first send length
+                byte[] lengthBuffer = BitConverter.GetBytes(data.Length);
+                stream.Write(lengthBuffer, 0, lengthBuffer.Length);
+
+                // then send data    
+                stream.Write(data, 0, data.Length);
+
+                stream.Flush();
+                node.Close();
+            }
         }
 
     }

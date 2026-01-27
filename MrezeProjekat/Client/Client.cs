@@ -15,11 +15,14 @@ namespace Client
 {
     public class Client
     {
+        const int TcpServerPort = 50001;
+        const int UdpServerPort = 60001;
+        const int NodeBasePort = 5501;
         static void Main(string[] args)
         {
-            // Create the client socket
+            // Create the client socket (TCP)
             Socket clientSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            IPEndPoint serverEP = new IPEndPoint(IPAddress.Loopback, 50001);
+            IPEndPoint serverEP = new IPEndPoint(IPAddress.Loopback, TcpServerPort);
 
             clientSocket.Connect(serverEP);
 
@@ -29,12 +32,36 @@ namespace Client
             Request req = new Request(null, 3, 5);
             SendRequest(clientSocket, req);
 
-            // recieve instructions 
+            // recieve client instructions 
             Instructions ins = RecieveInstructions(clientSocket);
-            Console.Write(ins.ToString());
+            //Console.Write(ins.ToString());
+
+            // form the Onion nodes
+            List<OnionNode> onionNodes = new List<OnionNode>();
+            for (int i = 0; i < req.NodeNum; i++)
+            {
+                IPEndPoint localEP = new IPEndPoint(IPAddress.Any, NodeBasePort + i);
+                OnionNode node = new OnionNode(localEP);
+                
+                onionNodes.Add(node);
+            }
+
+            // recieve instructions for the nodes
+            List<Task> nodeTasks = new List<Task>();
+            foreach (OnionNode node in onionNodes)
+            {
+                nodeTasks.Add(Task.Run(() => node.ReceiveInstructionsForNode()));
+            }
+            Task.WaitAll(nodeTasks.ToArray());
+
+            foreach (OnionNode node in onionNodes)
+            {
+                Console.WriteLine(node.NodeInstructions.ToString());
+            }
 
             // crypt the message N times
             Message message = CryptoHelper.CryptNTimes("gas", 3 , ins);
+
 
             // closing of the socket
             clientSocket.Close();
