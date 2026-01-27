@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -12,26 +13,38 @@ namespace MrezeProjekat.Models
 {
     public class OnionNode
     {
-        public int NodeId  { get; set; }
-        public int Timeout { get; set; }
+        public int NodePort  { get; set; }
         public Instructions NodeInstructions { get; set; }
 
+        private IPEndPoint _localEP;
+        private TcpListener _tcpListener;
         private Socket _udpSocket;
 
         public OnionNode() { }
-        public OnionNode(Instructions instructions, IPEndPoint localEP, int timeout)
+        public OnionNode(IPEndPoint ep)
+        {
+            this._localEP = ep;
+            this._tcpListener = new TcpListener(this._localEP);
+            this._tcpListener.Start();
+        }
+
+        public OnionNode(Instructions instructions, IPEndPoint localEP)
         { 
             this.NodeInstructions = instructions;
             this._udpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             
             this._udpSocket.Blocking = false; // neblokirajuci rezim
-            this.Timeout = timeout;           // pool timeout
-
             this._udpSocket.Bind(localEP);    // bindujemo jer cemo i slusati i slati
         }
 
-        void RunNode()
+        public void RunNode()
         {
+
+            // nakon prijema Instrukcija pokreni UDP socket
+            this._udpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            this._udpSocket.Blocking = false;
+            this._udpSocket.Bind(new IPEndPoint(IPAddress.Loopback, NodePort));
+
             Console.WriteLine("[NODE] Starting polling loop...");
 
             while (true)
@@ -40,14 +53,14 @@ namespace MrezeProjekat.Models
                 if (this._udpSocket.Poll(1_000_000, SelectMode.SelectRead))
                 {
                     Message message = this.ReceiveFromPrevNode();
-                    Console.WriteLine($"[NODE {this.NodeId}] recieved message");
+                    Console.WriteLine($"[NODE {this.NodePort}] recieved message");
                     
                     this.SendToNextNode(message);
-                    Console.WriteLine($"[NODE {this.NodeId}] send message");
+                    Console.WriteLine($"[NODE {this.NodePort}] send message");
                 }
                 else
                 {
-                    Console.WriteLine($"[NODE {this.NodeId}] waiting...");
+                    Console.WriteLine($"[NODE {this.NodePort}] waiting...");
                 }
             }
 
@@ -80,12 +93,35 @@ namespace MrezeProjekat.Models
             return Message.FromBytes(actualData);
         }
 
+        public void ReceiveInstructionsForNode()
+        {
+            using (TcpClient client = this._tcpListener.AcceptTcpClient())
+            using (NetworkStream stream = client.GetStream())
+            {
+                // recieve length first
+                byte[] lengthBuffer = new byte[4];
+                stream.Read(lengthBuffer, 0, lengthBuffer.Length);
+                int dataLength = BitConverter.ToInt32(lengthBuffer, 0);
+
+                //recieve the data
+                byte[] buffer = new byte[dataLength];
+                int totalreceived = 0;
+                while (totalreceived < dataLength)
+                {
+                    int received = stream.Read(buffer, totalreceived, dataLength - totalreceived);
+                    totalreceived += received;
+                }
+
+                NodeInstructions = Instructions.FromBytes(buffer);
+            }
+        }
+
         private byte[] PeelOffLayer(string message) // removes one layer of encryption from message
         {
             byte[] cryptedMessage = Encoding.UTF8.GetBytes(message);
 
-            byte[] key = this.NodeInstructions[this.NodeId].Key;
-            byte[] iv  = this.NodeInstructions[this.NodeId].IV;
+            byte[] key = this.NodeInstructions[this.NodePort].Key;
+            byte[] iv  = this.NodeInstructions[this.NodePort].IV;
 
             string decryptedMessage = CryptoHelper.DecryptStringFromBytes(cryptedMessage, key, iv);
             byte[] data = Encoding.UTF8.GetBytes(decryptedMessage);
