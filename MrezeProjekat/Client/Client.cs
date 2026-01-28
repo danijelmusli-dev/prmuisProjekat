@@ -17,6 +17,7 @@ namespace Client
     {
         const int TcpServerPort = 50001;
         const int UdpServerPort = 60001;
+        const int UdpClientPort = 60000;
         const int NodeBasePort = 5501;
         static void Main(string[] args)
         {
@@ -41,7 +42,7 @@ namespace Client
             for (int i = 0; i < req.NodeNum; i++)
             {
                 IPEndPoint localEP = new IPEndPoint(IPAddress.Any, NodeBasePort + i);
-                OnionNode node = new OnionNode(localEP);
+                OnionNode node = new OnionNode(localEP, NodeBasePort + i);
                 
                 onionNodes.Add(node);
             }
@@ -54,14 +55,34 @@ namespace Client
             }
             Task.WaitAll(nodeTasks.ToArray());
 
-            foreach (OnionNode node in onionNodes)
-            {
-                Console.WriteLine(node.NodeInstructions.ToString());
-            }
-
             // crypt the message N times
             Message message = CryptoHelper.CryptNTimes("gas", 3 , ins);
 
+
+            //UdpClient client = new UdpClient();
+            //IPEndPoint serverEPP = new IPEndPoint(IPAddress.Loopback, 60001);
+
+            //byte[] data = Encoding.UTF8.GetBytes("Pozdrav sa klijenta!");
+
+            // pošalji serveru
+            //client.Send(data, data.Length, serverEPP);
+
+            // start every Onion node
+
+            nodeTasks.Clear();
+            foreach (OnionNode node in onionNodes)
+            {
+                nodeTasks.Add(Task.Run(() => node.RunNode()));
+            }
+
+            // send the message to the first node
+            Console.WriteLine("Sending message to the first node...");
+            IPEndPoint firstNodeEP = new IPEndPoint(IPAddress.Loopback, NodeBasePort);
+            using (UdpClient udpClient = new UdpClient())
+            {
+                byte[] data = message.ToBytes();
+                udpClient.Send(data, data.Length, firstNodeEP);
+            }
 
             // closing of the socket
             clientSocket.Close();
@@ -104,6 +125,21 @@ namespace Client
             Instructions ins = Instructions.FromBytes(buffer);
 
             return ins;
+        }
+
+        public static void ListenForUPD()
+        {
+            using (UdpClient client = new UdpClient(UdpClientPort))
+            {
+                while (true)
+                {
+                    IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
+                    byte[] data = client.Receive(ref remoteEP);
+
+                    Console.WriteLine($"Received {data.Length} bytes from {remoteEP}");
+                    Console.WriteLine(Encoding.UTF8.GetString(data));
+                }
+            }
         }
 
     }

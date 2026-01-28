@@ -52,7 +52,7 @@ namespace MrezeProjekat.Models
 
         public static Message FromBytes(byte[] data) 
         {
-            using (MemoryStream ms = new MemoryStream())
+            using (MemoryStream ms = new MemoryStream(data))
             using (BinaryReader br = new BinaryReader(ms))
             {
                 string content = br.ReadString();
