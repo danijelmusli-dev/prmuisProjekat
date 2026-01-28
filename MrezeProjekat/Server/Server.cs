@@ -1,4 +1,5 @@
 ﻿using MrezeProjekat;
+using MrezeProjekat.Helpers;
 using MrezeProjekat.Models;
 using System;
 using System.Collections.Generic;
@@ -28,11 +29,15 @@ namespace Server
             serverSocket.Bind(serverEP);
             serverSocket.Listen(10);
 
+            // Create a task to listen for UDP messages
+            // we do this because UPD is blocking so we put it in a separate thread
+            Task.Run(() => ListenForUPD());
+
             Console.WriteLine("Waiting for client...");
             Socket acceptedSocket = serverSocket.Accept();
             Console.WriteLine("Client connected.");
 
-            // koristi funkcije sa prosleđenim socketom
+            // recieve client request
             Request req = RecieveRequest(acceptedSocket);
 
             // send instructions (client only)
@@ -40,6 +45,7 @@ namespace Server
 
             // send instructions for every node
             SendInstructionsForNodes(ins, req);
+
 
             // zatvori sve na kraju
             acceptedSocket.Close();
@@ -121,6 +127,21 @@ namespace Server
 
                 stream.Flush();
                 node.Close();
+            }
+        }
+
+        public static void ListenForUPD()
+        {
+            using (UdpClient client = new UdpClient(UdpPort))
+            {
+                while (true)
+                {
+                    IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
+                    byte[] data = client.Receive(ref remoteEP);
+
+                    Console.WriteLine($"Received {data.Length} bytes from {remoteEP}");
+                    Console.WriteLine(Message.FromBytes(data).Content);
+                }
             }
         }
 

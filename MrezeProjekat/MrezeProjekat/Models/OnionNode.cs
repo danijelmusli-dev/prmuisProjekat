@@ -21,9 +21,10 @@ namespace MrezeProjekat.Models
         private Socket _udpSocket;
 
         public OnionNode() { }
-        public OnionNode(IPEndPoint ep)
+        public OnionNode(IPEndPoint ep, int nodePort)
         {
             this._localEP = ep;
+            this.NodePort = nodePort;
             this._tcpListener = new TcpListener(this._localEP);
             this._tcpListener.Start();
         }
@@ -43,9 +44,9 @@ namespace MrezeProjekat.Models
             // nakon prijema Instrukcija pokreni UDP socket
             this._udpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             this._udpSocket.Blocking = false;
-            this._udpSocket.Bind(new IPEndPoint(IPAddress.Loopback, NodePort));
+            this._udpSocket.Bind(new IPEndPoint(IPAddress.Loopback, this.NodePort));
 
-            Console.WriteLine("[NODE] Starting polling loop...");
+            Console.WriteLine($"[NODE {this.NodePort}] Starting polling loop...");
 
             while (true)
             {
@@ -72,7 +73,7 @@ namespace MrezeProjekat.Models
             string decryptedMessage = Encoding.UTF8.GetString(this.PeelOffLayer(message.Content));
             Message passNext = new Message(decryptedMessage);
 
-            IPEndPoint nextEP = this.NodeInstructions.NextNode ?? new IPEndPoint(IPAddress.Parse("127.0.0.1"), 60000);
+            IPEndPoint nextEP = this.NodeInstructions.NextNode ?? new IPEndPoint(IPAddress.Parse("127.0.0.1"), 60001);
 
             byte[] data = passNext.ToBytes();
             this._udpSocket.SendTo(data, 0, data.Length, SocketFlags.None, nextEP);
@@ -81,7 +82,7 @@ namespace MrezeProjekat.Models
         public Message ReceiveFromPrevNode()
         {
             // recieving the instance of Message
-            EndPoint prevEP = this.NodeInstructions.PrevNode ?? new IPEndPoint(IPAddress.Any, 0);
+            EndPoint prevEP = this.NodeInstructions.PrevNode ?? new IPEndPoint(IPAddress.Any, 60000);
 
             byte[] buffer = new byte[4096]; // 4096 stand UDP size
             int bytesReceived = this._udpSocket.ReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref prevEP);
@@ -115,13 +116,35 @@ namespace MrezeProjekat.Models
                 NodeInstructions = Instructions.FromBytes(buffer);
             }
         }
+        public Message ReceiveMessageForNode()
+        {
+            using (TcpClient client = this._tcpListener.AcceptTcpClient())
+            using (NetworkStream stream = client.GetStream())
+            {
+                // recieve length first
+                byte[] lengthBuffer = new byte[4];
+                stream.Read(lengthBuffer, 0, lengthBuffer.Length);
+                int dataLength = BitConverter.ToInt32(lengthBuffer, 0);
+
+                //recieve the data
+                byte[] buffer = new byte[dataLength];
+                int totalreceived = 0;
+                while (totalreceived < dataLength)
+                {
+                    int received = stream.Read(buffer, totalreceived, dataLength - totalreceived);
+                    totalreceived += received;
+                }
+
+                return Message.FromBytes(buffer);
+            }
+        }
 
         private byte[] PeelOffLayer(string message) // removes one layer of encryption from message
         {
             byte[] cryptedMessage = Encoding.UTF8.GetBytes(message);
 
-            byte[] key = this.NodeInstructions[this.NodePort].Key;
-            byte[] iv  = this.NodeInstructions[this.NodePort].IV;
+            byte[] key = this.NodeInstructions[0].Key;
+            byte[] iv  = this.NodeInstructions[0].IV;
 
             string decryptedMessage = CryptoHelper.DecryptStringFromBytes(cryptedMessage, key, iv);
             byte[] data = Encoding.UTF8.GetBytes(decryptedMessage);

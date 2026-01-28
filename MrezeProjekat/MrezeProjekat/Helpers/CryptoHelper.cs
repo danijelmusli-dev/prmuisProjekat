@@ -79,7 +79,7 @@ namespace MrezeProjekat.Helpers
         public static Message CryptNTimes(string original, int times, Instructions instructions)
         {
             Message message = new Message(original);
-            for (int i = 0; i < times; i++)
+            for (int i = times - 1; i >= 0; i--)
             {
                 message.Content = Convert.ToBase64String(CryptoHelper.EncryptStringToBytes(message.Content, instructions[i].Key, instructions[i].IV));
                 Console.WriteLine($"{i+1} Layer of encryption: {message.Content}");
