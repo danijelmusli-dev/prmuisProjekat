@@ -17,14 +17,14 @@ namespace MrezeProjekat.Helpers
 
         // Server ports
         public const int TcpServerPort = 50001;
-        public const int UdpServerPort = 60001;
+        public const int UdpServerPort = 50002;
 
         // Client ports
-        public const int TcpClientPort = 50000;
-        public const int UdpClientPort = 60000;
+        public const int TcpClientPort = 60001;
+        public const int UdpClientPort = 60002;
 
         // UPD send and receive
-        public static byte[] ListenForUPD(Socket listenerSocket, EndPoint remoteEP)
+        public static byte[] ListenForUDP(Socket listenerSocket, EndPoint remoteEP)
         {
             byte[] buffer = new byte[4096];
 

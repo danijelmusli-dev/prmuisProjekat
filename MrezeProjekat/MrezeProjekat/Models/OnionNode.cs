@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -29,7 +30,7 @@ namespace MrezeProjekat.Models
 
             // nakon prijema Instrukcija pokreni UDP socket
             this._udpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            //this._udpSocket.Blocking = false;
+            this._udpSocket.Blocking = false;
             this._udpSocket.Bind(this._localEP);
         }
 
@@ -37,16 +38,18 @@ namespace MrezeProjekat.Models
         {
             Console.WriteLine($"[NODE {this.NodePort}] Starting polling loop...");
 
-            while (true)
+            bool spin = false;
+            while (!spin)
             {
                 // awaiting for data (Message object)
-                if (this._udpSocket.Poll(1_000_000, SelectMode.SelectRead))
+                if (spin = this._udpSocket.Poll(1_000_000, SelectMode.SelectRead))
                 {
                     Message message = this.ReceiveFromPrevNode();
                     Console.WriteLine($"[NODE {this.NodePort}] recieved message {message.Content}");
                     
                     this.SendToNextNode(message);
                     Console.WriteLine($"[NODE {this.NodePort}] send message");
+                    break;
                 }
                 else
                 {
@@ -58,12 +61,15 @@ namespace MrezeProjekat.Models
 
         public void SendToNextNode(Message message)
         {
+            EndPoint nextEP = this.NodeInstructions.NextNode ?? new IPEndPoint(IPAddress.Loopback, Networking.UdpServerPort);
+
             // send the instance of Message 
             string decryptedMessage = Encoding.UTF8.GetString(this.PeelOffLayer(message.Content));
             Message passNext = new Message(decryptedMessage);
 
             byte[] data = passNext.ToBytes(); 
-            Networking.SendUdp(data, this._udpSocket, this.NodeInstructions.NextNode as IPEndPoint);
+            Networking.SendUdp(data, this._udpSocket, nextEP);
+  
         }
 
         public Message ReceiveFromPrevNode()
@@ -71,7 +77,7 @@ namespace MrezeProjekat.Models
             // recieving the instance of Message
             EndPoint prevEP = this.NodeInstructions.PrevNode ?? new IPEndPoint(IPAddress.Any, Networking.UdpClientPort);
 
-            byte[] data = Networking.ListenForUPD(this._udpSocket, prevEP);
+            byte[] data = Networking.ListenForUDP(this._udpSocket, prevEP);
             if (data == null || data.Length == 0)
                 // no data received (transient).
                 // Return null or loop caller should handle null.
@@ -101,10 +107,14 @@ namespace MrezeProjekat.Models
 
         private byte[] PeelOffLayer(string message) // removes one layer of encryption from message
         {
-            byte[] cryptedMessage = Encoding.UTF8.GetBytes(message);
+            byte[] cryptedMessage = Convert.FromBase64String(message);
+            Console.WriteLine($"PEEL OFF {this.NodePort} message: {message}");
+            Console.WriteLine($"Instructions{this.NodePort} message:{this.NodeInstructions}");
 
             byte[] key = this.NodeInstructions[0].Key;
             byte[] iv  = this.NodeInstructions[0].IV;
+            
+            Console.WriteLine($"{key == this.NodeInstructions[0].Key}");
 
             string decryptedMessage = CryptoHelper.DecryptStringFromBytes(cryptedMessage, key, iv);
             byte[] data = Encoding.UTF8.GetBytes(decryptedMessage);
