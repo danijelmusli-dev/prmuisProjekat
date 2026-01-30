@@ -82,7 +82,8 @@ namespace MrezeProjekat.Helpers
             for (int i = times - 1; i >= 0; i--)
             {
                 message.Content = Convert.ToBase64String(CryptoHelper.EncryptStringToBytes(message.Content, instructions[i].Key, instructions[i].IV));
-                Console.WriteLine($"{i+1} Layer of encryption: {message.Content}");
+                //Console.WriteLine($"{i+1} Layer of encryption: {message.Content}");
+                Console.WriteLine($"{times - i} Layer of encryption: {instructions[i].ToString()}");
             }
             return message;
         }

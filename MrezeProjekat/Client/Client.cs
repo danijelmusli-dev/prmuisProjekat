@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 using MrezeProjekat;
@@ -15,34 +16,41 @@ namespace Client
 {
     public class Client
     {
-        const int TcpServerPort = 50001;
-        const int UdpServerPort = 60001;
-        const int UdpClientPort = 60000;
-        const int NodeBasePort = 5501;
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             // Create the client socket (TCP)
-            Socket clientSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            IPEndPoint serverEP = new IPEndPoint(IPAddress.Loopback, TcpServerPort);
+            Socket clientSocketTCP = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp); 
+            IPEndPoint clientEP = new IPEndPoint(IPAddress.Loopback, Networking.TcpClientPort);
+            clientSocketTCP.Bind(clientEP);
 
-            clientSocket.Connect(serverEP);
+            // Create the client socket (UDP)// UDP klijent socket
+            Socket clientSocketUPD = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            clientSocketUPD.Bind(new IPEndPoint(IPAddress.Loopback, Networking.UdpClientPort));
+
+            // Servern EndPoint
+            IPEndPoint serverEP = new IPEndPoint(IPAddress.Loopback, Networking.TcpServerPort);
+
+            //Thread.Sleep(1000); // wait for server to be ready
+            clientSocketTCP.Connect(serverEP);
 
             // form the request (coming soon)
             // send request to the server
             // umesto new Request napraviceo f-ju gde korisnik formira zahtev
-            Request req = new Request(null, 3, 5);
-            SendRequest(clientSocket, req);
+            Request req = new Request(clientSocketTCP.LocalEndPoint as IPEndPoint, 3, 5);
+            Console.WriteLine("Sending request to server...");
+            SendRequest(clientSocketTCP, req);
 
             // recieve client instructions 
-            Instructions ins = RecieveInstructions(clientSocket);
-            //Console.Write(ins.ToString());
+            Console.WriteLine("Recieving instructions from server...");
+            Instructions ins = RecieveInstructions(clientSocketTCP);
+            Console.Write(ins.ToString());
 
             // form the Onion nodes
             List<OnionNode> onionNodes = new List<OnionNode>();
             for (int i = 0; i < req.NodeNum; i++)
             {
-                IPEndPoint localEP = new IPEndPoint(IPAddress.Any, NodeBasePort + i);
-                OnionNode node = new OnionNode(localEP, NodeBasePort + i);
+                IPEndPoint localEP = new IPEndPoint(IPAddress.Loopback, Networking.NodeBasePort + i);
+                OnionNode node = new OnionNode(localEP, Networking.NodeBasePort + i);
                 
                 onionNodes.Add(node);
             }
@@ -52,40 +60,40 @@ namespace Client
             foreach (OnionNode node in onionNodes)
             {
                 nodeTasks.Add(Task.Run(() => node.ReceiveInstructionsForNode()));
+                nodeTasks.Last().Wait();
             }
-            Task.WaitAll(nodeTasks.ToArray());
 
             // crypt the message N times
-            Message message = CryptoHelper.CryptNTimes("gas", 3 , ins);
+            Message message = CryptoHelper.CryptNTimes("gas", req.NodeNum, ins);
+            Console.WriteLine($"\nClient formed the message to send: {message.Content}");
+            Console.WriteLine();
 
-
-            //UdpClient client = new UdpClient();
-            //IPEndPoint serverEPP = new IPEndPoint(IPAddress.Loopback, 60001);
-
-            //byte[] data = Encoding.UTF8.GetBytes("Pozdrav sa klijenta!");
-
-            // pošalji serveru
-            //client.Send(data, data.Length, serverEPP);
-
-            // start every Onion node
-
+            //start every Onion node
             nodeTasks.Clear();
             foreach (OnionNode node in onionNodes)
             {
                 nodeTasks.Add(Task.Run(() => node.RunNode()));
             }
 
+            await Task.Delay(1000);
+
             // send the message to the first node
-            Console.WriteLine("Sending message to the first node...");
-            IPEndPoint firstNodeEP = new IPEndPoint(IPAddress.Loopback, NodeBasePort);
-            using (UdpClient udpClient = new UdpClient())
-            {
-                byte[] data = message.ToBytes();
-                udpClient.Send(data, data.Length, firstNodeEP);
-            }
+            OnionNode firstNode = onionNodes.First();
+
+            IPEndPoint nodeEP = new IPEndPoint(IPAddress.Loopback, firstNode.NodePort);
+            int sent = clientSocketUPD.SendTo(message.ToBytes(), nodeEP);
+            Console.WriteLine($"\nUDP sending {sent} bytes to first node [{nodeEP.Address}:{nodeEP.Port}]...");
+
+            //using (var udpSender = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))
+            //{
+            //    IPEndPoint nodeEP = new IPEndPoint(IPAddress.Loopback, firstNode.NodePort);
+            //    int sent = udpSender.SendTo(message.ToBytes(), nodeEP);
+            //    Console.WriteLine($"\nUDP sending {sent} bytes to first node [{nodeEP.Address}:{nodeEP.Port}]...");
+            //}
 
             // closing of the socket
-            clientSocket.Close();
+            clientSocketTCP.Close();
+            clientSocketUPD.Close();
 
             Console.ReadKey();
         }
@@ -125,21 +133,6 @@ namespace Client
             Instructions ins = Instructions.FromBytes(buffer);
 
             return ins;
-        }
-
-        public static void ListenForUPD()
-        {
-            using (UdpClient client = new UdpClient(UdpClientPort))
-            {
-                while (true)
-                {
-                    IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
-                    byte[] data = client.Receive(ref remoteEP);
-
-                    Console.WriteLine($"Received {data.Length} bytes from {remoteEP}");
-                    Console.WriteLine(Encoding.UTF8.GetString(data));
-                }
-            }
         }
 
     }
