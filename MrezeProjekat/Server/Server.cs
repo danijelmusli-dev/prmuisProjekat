@@ -16,14 +16,11 @@ namespace Server
 {
     public class Server
     {
-        const int TcpPort = 50001;
-        const int UdpPort = 60001;
-        const int NodeBasePort = 5501;
         static void Main(string[] args)
         {
             // Create the server socket (TCP)
             Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            IPEndPoint serverEP = new IPEndPoint(IPAddress.Any, TcpPort);  
+            IPEndPoint serverEP = new IPEndPoint(IPAddress.Any, Networking.TcpServerPort);
 
             serverSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             serverSocket.Bind(serverEP);
@@ -31,30 +28,33 @@ namespace Server
 
             // Create a task to listen for UDP messages
             // we do this because UPD is blocking so we put it in a separate thread
-            Task.Run(() => ListenForUPD());
+            //Task.Run(() => { while (true) Networking.ListenForUPD(Networking.UdpServerPort, serverEP); });
 
             Console.WriteLine("Waiting for client...");
             Socket acceptedSocket = serverSocket.Accept();
             Console.WriteLine("Client connected.");
 
             // recieve client request
-            Request req = RecieveRequest(acceptedSocket);
+            Request req = RecieveRequestFromClient(acceptedSocket);
+            Console.WriteLine($"\nReceived request from: {acceptedSocket.LocalEndPoint as IPEndPoint}");
 
             // send instructions (client only)
-            Instructions ins = SendInstructions(acceptedSocket, req);
+            Console.WriteLine("\nSending instructions to client...");
+            Instructions ins = SendInstructionsToClient(acceptedSocket, req);
 
             // send instructions for every node
-            SendInstructionsForNodes(ins, req);
-
+            Console.WriteLine("\nSending instructions to nodes...");
+            SendInstructionsForNodes(ins, req, serverSocket);
 
             // zatvori sve na kraju
+            acceptedSocket.Shutdown(SocketShutdown.Both);
             acceptedSocket.Close();
             serverSocket.Close();
 
             Console.ReadKey();
         }
 
-        public static Request RecieveRequest(Socket acceptedSocket)
+        public static Request RecieveRequestFromClient(Socket acceptedSocket)
         {
             // primi dužinu (4 bajta)
             byte[] lengthBuffer = new byte[4];
@@ -74,7 +74,7 @@ namespace Server
             return req;
         }
 
-        public static Instructions SendInstructions(Socket acceptedSocket, Request req)
+        public static Instructions SendInstructionsToClient(Socket acceptedSocket, Request req)
         {
             Instructions ins = new Instructions(req.NodeNum, null, null);
 
@@ -101,47 +101,37 @@ namespace Server
 
             return ins;
         }
-        public static void SendInstructionsForNodes(Instructions ins, Request req)
+       
+        public static void SendInstructionsForNodes(Instructions ins, Request req, Socket serverSocket)
         {
             // send instructions for every node
             for (int i = 0; i < req.NodeNum; i++)
             {
-                IPEndPoint nextEP = (i == (req.NodeNum - 1)) ? null : new IPEndPoint(IPAddress.Loopback, NodeBasePort + (i + 1));
-                IPEndPoint prevEP = (i == 0) ? null : new IPEndPoint(IPAddress.Loopback, NodeBasePort + (i - 1));
+                // form next and prev IPEndPoint
+                IPEndPoint nextEP = (i == (req.NodeNum - 1)) ? null : new IPEndPoint(IPAddress.Loopback, Networking.NodeBasePort + (i + 1));
+                IPEndPoint prevEP = (i == 0) ? null : new IPEndPoint(IPAddress.Loopback, Networking.NodeBasePort + (i - 1));
                 CryptoKey[] nodeKey = new CryptoKey[] { ins[i] };
 
-                Instructions nodeIns = new Instructions(nodeKey,prevEP,nextEP);
+                // form Instructions object for the node
+                Instructions nodeIns = new Instructions(nodeKey, prevEP, nextEP);
                 byte[] data = nodeIns.ToBytes();
 
-                TcpClient node = new TcpClient();
-                node.Connect(IPAddress.Loopback, NodeBasePort + i);
+                // form IPEndPoint for the node
+                IPEndPoint nodeEP = new IPEndPoint(IPAddress.Loopback, Networking.NodeBasePort + i);
 
-                NetworkStream stream = node.GetStream();
+                serverSocket.Listen(10);
+                Socket nodeSocket = serverSocket.Accept();
 
-                // first send length
-                byte[] lengthBuffer = BitConverter.GetBytes(data.Length);
-                stream.Write(lengthBuffer, 0, lengthBuffer.Length);
+                // handshake and send instructions
+                Console.WriteLine($"\nWaiting handshake from Node[{Networking.NodeBasePort + i}]:");
+                byte[] handshakeData = new byte[5];
+                nodeSocket.Receive(handshakeData);
 
-                // then send data    
-                stream.Write(data, 0, data.Length);
+                if(Encoding.UTF8.GetString(handshakeData).Equals("READY"))
+                    Console.WriteLine($"Handshake received from Node[{Networking.NodeBasePort + i}]");
 
-                stream.Flush();
-                node.Close();
-            }
-        }
-
-        public static void ListenForUPD()
-        {
-            using (UdpClient client = new UdpClient(UdpPort))
-            {
-                while (true)
-                {
-                    IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
-                    byte[] data = client.Receive(ref remoteEP);
-
-                    Console.WriteLine($"Received {data.Length} bytes from {remoteEP}");
-                    Console.WriteLine(Message.FromBytes(data).Content);
-                }
+                Networking.SendTcp(data, nodeSocket);
+                Console.WriteLine($"\nSending Node[{Networking.NodeBasePort + i}] {i + 1}  instructions:");
             }
         }
 

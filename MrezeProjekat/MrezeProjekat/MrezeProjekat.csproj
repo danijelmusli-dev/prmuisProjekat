@@ -46,6 +46,7 @@
     <Compile Include="Helpers\CryptoKey.cs" />
     <Compile Include="Helpers\CryptoHelper.cs" />
     <Compile Include="Helpers\Menu.cs" />
+    <Compile Include="Helpers\Networking.cs" />
     <Compile Include="Models\Instructions.cs" />
     <Compile Include="Models\Message.cs" />
     <Compile Include="Models\OnionNode.cs" />

@@ -141,15 +141,15 @@ public class Instructions
         StringBuilder builder = new StringBuilder();
 
         #region PrevNode
-        builder.AppendLine("=> Prev Node ");
-        builder.Append("IPAdress: ");
+        builder.Append("Prev Node: ");
+        //builder.Append("IPAdress: ");
         builder.AppendLine(this.PrevNode?.Address?.ToString() ?? "None");
         builder.Append("Port: ");
         builder.AppendLine(this.PrevNode?.Port.ToString() ?? "None");
         #endregion
         #region NextNode
-        builder.AppendLine("=> Next Node ");
-        builder.Append("IPAdress: ");
+        builder.Append("Next Node: ");
+        //builder.Append("IPAdress: ");
         builder.AppendLine(this.NextNode?.Address?.ToString() ?? "None");
         builder.Append("Port: ");
         builder.AppendLine(this.NextNode?.Port.ToString() ?? "None");
