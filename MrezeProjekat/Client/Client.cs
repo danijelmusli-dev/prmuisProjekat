@@ -25,12 +25,13 @@ namespace Client
 
             // Create the client socket (UDP)// UDP klijent socket
             Socket clientSocketUPD = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+
+            clientSocketTCP.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             clientSocketUPD.Bind(new IPEndPoint(IPAddress.Loopback, Networking.UdpClientPort));
 
             // Servern EndPoint
             IPEndPoint serverEP = new IPEndPoint(IPAddress.Loopback, Networking.TcpServerPort);
-
-            //Thread.Sleep(1000); // wait for server to be ready
+            
             clientSocketTCP.Connect(serverEP);
 
             // form the request (coming soon)
@@ -64,7 +65,7 @@ namespace Client
             }
 
             // crypt the message N times
-            Message message = CryptoHelper.CryptNTimes("gas", req.NodeNum, ins);
+            Message message = CryptoHelper.CryptNTimes("medjed", req.NodeNum, ins);
             Console.WriteLine($"\nClient formed the message to send: {message.Content}");
             Console.WriteLine();
 
@@ -92,8 +93,12 @@ namespace Client
             //}
 
             // closing of the socket
+            clientSocketTCP.Shutdown(SocketShutdown.Both);
             clientSocketTCP.Close();
+            clientSocketTCP.Dispose();
+
             clientSocketUPD.Close();
+            clientSocketUPD.Dispose();
 
             Console.ReadKey();
         }
