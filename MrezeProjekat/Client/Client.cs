@@ -19,20 +19,17 @@ namespace Client
         static async Task Main(string[] args)
         {
             // Create the client socket (TCP)
-            Socket clientSocketTCP = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp); 
-            IPEndPoint clientEP = new IPEndPoint(IPAddress.Loopback, Networking.TcpClientPort);
-            clientSocketTCP.Bind(clientEP);
+            Socket clientSocketTCP = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            clientSocketTCP.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
 
             // Create the client socket (UDP)// UDP klijent socket
-            Socket clientSocketUPD = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-
-            clientSocketTCP.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            clientSocketUPD.Bind(new IPEndPoint(IPAddress.Loopback, Networking.UdpClientPort));
+            Socket clientSocketUDP = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            clientSocketUDP.Bind(new IPEndPoint(IPAddress.Loopback, Networking.UdpClientPort));
 
             // Servern EndPoint
             IPEndPoint serverEP = new IPEndPoint(IPAddress.Loopback, Networking.TcpServerPort);
-            
             clientSocketTCP.Connect(serverEP);
+            Console.WriteLine($"{(clientSocketTCP.RemoteEndPoint as IPEndPoint).Port}");
 
             // form the request (coming soon)
             // send request to the server
@@ -44,7 +41,7 @@ namespace Client
             // recieve client instructions 
             Console.WriteLine("Recieving instructions from server...");
             Instructions ins = RecieveInstructions(clientSocketTCP);
-            Console.Write(ins.ToString());
+            Console.Write(ins.ToString() + "\n\n");
 
             // form the Onion nodes
             List<OnionNode> onionNodes = new List<OnionNode>();
@@ -65,40 +62,71 @@ namespace Client
             }
 
             // crypt the message N times
-            Message message = CryptoHelper.CryptNTimes("medjed", req.NodeNum, ins);
+            Message message = CryptoHelper.CryptNTimes("medjed", req.NodeNum, ins, true);
             Console.WriteLine($"\nClient formed the message to send: {message.Content}");
             Console.WriteLine();
 
+            OnionNode firstNode = onionNodes.First();
+            IPEndPoint nodeEP = new IPEndPoint(IPAddress.Loopback, firstNode.NodePort);
+            bool stop = false;
+            Task listenerTask = Task.Run(() =>
+            {
+
+                while (!stop)
+                {
+                    byte[] buffer = Networking.ListenForUDP(clientSocketUDP, nodeEP);
+
+                    Message msg = Message.FromBytes(buffer);
+                    Console.WriteLine($"Primljen paket od {nodeEP}: {msg.Content}");
+
+                    Console.WriteLine($"[CLIENT] Primljen paket od {nodeEP}: {msg.Content}");
+                    stop = true;
+                }
+            });
+
             //start every Onion node
+            CancellationTokenSource cts = new CancellationTokenSource();
+            CancellationToken token = cts.Token;
             nodeTasks.Clear();
             foreach (OnionNode node in onionNodes)
             {
-                nodeTasks.Add(Task.Run(() => node.RunNode()));
+                nodeTasks.Add(Task.Run(() => node.RunNode(token), token));
             }
 
-            await Task.Delay(1000);
-
             // send the message to the first node
-            OnionNode firstNode = onionNodes.First();
-
-            IPEndPoint nodeEP = new IPEndPoint(IPAddress.Loopback, firstNode.NodePort);
-            int sent = clientSocketUPD.SendTo(message.ToBytes(), nodeEP);
+            int sent = Networking.SendUdp(message.ToBytes(), clientSocketUDP, nodeEP);
             Console.WriteLine($"\nUDP sending {sent} bytes to first node [{nodeEP.Address}:{nodeEP.Port}]...");
 
-            //using (var udpSender = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))
-            //{
-            //    IPEndPoint nodeEP = new IPEndPoint(IPAddress.Loopback, firstNode.NodePort);
-            //    int sent = udpSender.SendTo(message.ToBytes(), nodeEP);
-            //    Console.WriteLine($"\nUDP sending {sent} bytes to first node [{nodeEP.Address}:{nodeEP.Port}]...");
-            //}
+
+            await listenerTask;
+
+            // wait for response from server
+            Message message1 = CryptoHelper.CryptNTimes("pingvin", req.NodeNum, ins, true);
+            Networking.SendUdp(message1.ToBytes(), clientSocketUDP, nodeEP);
+            Console.WriteLine($"\nSecond sending {sent} bytes to first node [{nodeEP.Address}:{nodeEP.Port}]...");
+         
 
             // closing of the socket
             clientSocketTCP.Shutdown(SocketShutdown.Both);
             clientSocketTCP.Close();
             clientSocketTCP.Dispose();
 
-            clientSocketUPD.Close();
-            clientSocketUPD.Dispose();
+            await listenerTask;
+            clientSocketUDP.Close();
+            clientSocketUDP.Dispose();
+
+            cts.Cancel();
+            try
+            {
+                await Task.WhenAll(nodeTasks);
+                stop = true;
+                await listenerTask;
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("\nOnion nodes have been stopped.");
+            }
+
 
             Console.ReadKey();
         }
@@ -139,6 +167,8 @@ namespace Client
 
             return ins;
         }
+
+
 
     }
 }

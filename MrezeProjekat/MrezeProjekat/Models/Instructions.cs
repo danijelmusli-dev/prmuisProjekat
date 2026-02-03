@@ -143,15 +143,15 @@ public class Instructions
         #region PrevNode
         builder.Append("Prev Node: ");
         //builder.Append("IPAdress: ");
-        builder.AppendLine(this.PrevNode?.Address?.ToString() ?? "None");
-        builder.Append("Port: ");
+        builder.Append(this.PrevNode?.Address?.ToString() ?? "None");
+        builder.Append("\tPort: ");
         builder.AppendLine(this.PrevNode?.Port.ToString() ?? "None");
         #endregion
         #region NextNode
         builder.Append("Next Node: ");
         //builder.Append("IPAdress: ");
-        builder.AppendLine(this.NextNode?.Address?.ToString() ?? "None");
-        builder.Append("Port: ");
+        builder.Append(this.NextNode?.Address?.ToString() ?? "None");
+        builder.Append("\tPort: ");
         builder.AppendLine(this.NextNode?.Port.ToString() ?? "None");
         #endregion
 
