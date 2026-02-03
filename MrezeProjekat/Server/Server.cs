@@ -20,24 +20,21 @@ namespace Server
         {
             // Create the server socket (TCP)
             Socket serverSocketTCP = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            IPEndPoint serverEP = new IPEndPoint(IPAddress.Any, Networking.TcpServerPort);
 
-            serverSocketTCP.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            serverSocketTCP.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true); 
+            IPEndPoint serverEP = new IPEndPoint(IPAddress.Loopback, Networking.TcpServerPort);
+
             serverSocketTCP.Bind(serverEP);
             serverSocketTCP.Listen(10);
 
             //// Create the server socket (UDP)
-            //Socket serverSocketUDP = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            //serverSocketUDP.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-
-            // Create a task to listen for UDP messages
-            // we do this because UPD is blocking so we put it in a separate thread
-
-            //Task.Run(() => { while (true) Networking.ListenForUDP(serverSocketUDP, nodeEP); });
+            // Bind server UDP socket na port na kojem očekuješ poruku od zadnjeg noda
+            Socket serverSocketUDP = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            serverSocketUDP.Bind(new IPEndPoint(IPAddress.Loopback, Networking.UdpServerPort));
 
             Console.WriteLine("Waiting for client...");
             Socket acceptedSocket = serverSocketTCP.Accept();
-            Console.WriteLine("Client connected.");
+            Console.WriteLine($"Client connected: {(acceptedSocket.LocalEndPoint)}");
 
             // recieve client request
             Request req = RecieveRequestFromClient(acceptedSocket);
@@ -51,22 +48,22 @@ namespace Server
             Console.WriteLine("\nSending instructions to nodes...");
             SendInstructionsForNodes(ins, req, serverSocketTCP);
 
-
-            // Bind server UDP socket na port na kojem očekuješ poruku od zadnjeg noda
-            Socket serverSocketUDP = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            serverSocketUDP.Bind(new IPEndPoint(IPAddress.Loopback, Networking.UdpServerPort));
-
+            // recieve last udp package
             // Placeholder za remote endpoint (popuniće se adresom pošiljaoca)
             EndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
-
             while (true)
             {
                 byte[] buffer = new byte[1024];
                 int received = serverSocketUDP.ReceiveFrom(buffer, ref remoteEP);
 
-                string message = Encoding.UTF8.GetString(buffer, 0, received);
-                Console.WriteLine($"Primljen paket od {remoteEP}: {message}");
-                break;
+                Message msg = Message.FromBytes(buffer.Take(received).ToArray());
+                Console.WriteLine($"Primljen paket od {remoteEP}: {msg.Content}");
+
+                buffer = (CryptoHelper.CryptNTimes("SERVER RESPONSE", req.NodeNum, ins, false)).ToBytes();
+                Console.WriteLine($"Poslat paket na {remoteEP}");
+                serverSocketUDP.SendTo(buffer, remoteEP);
+               
+                if(msg.Content.Equals("pingvin")) break;
             }
 
 
@@ -78,8 +75,7 @@ namespace Server
             serverSocketTCP.Close();
             serverSocketTCP.Dispose();
 
-            //serverSocketUDP.Close();
-            //serverSocketUDP.Dispose();
+            serverSocketUDP.Close();
 
             Console.ReadKey();
         }
@@ -140,10 +136,7 @@ namespace Server
                 // form next and prev IPEndPoint
                 IPEndPoint nextEP = (i == (req.NodeNum - 1)) ? null : new IPEndPoint(IPAddress.Loopback, Networking.NodeBasePort + (i + 1));
                 IPEndPoint prevEP = (i == 0) ? null : new IPEndPoint(IPAddress.Loopback, Networking.NodeBasePort + (i - 1));
-                CryptoKey[] nodeKey = new CryptoKey[1];
-                nodeKey[0] = ins[i];
-
-                Console.WriteLine($"KLJUC CVORAAAAAAAAAA {Networking.NodeBasePort + i} {nodeKey[0].ToString()}\n");
+                CryptoKey[] nodeKey = new CryptoKey[] { ins[i] };
 
                 // form Instructions object for the node
                 Instructions nodeIns = new Instructions(nodeKey, prevEP, nextEP);

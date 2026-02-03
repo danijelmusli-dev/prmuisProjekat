@@ -20,43 +20,52 @@ namespace MrezeProjekat.Helpers
         public const int UdpServerPort = 50002;
 
         // Client ports
-        public const int TcpClientPort = 60001;
-        public const int UdpClientPort = 60002;
+        // TcpClientPort not declared because of operating system TIME_WAIT period 
+        // Client gets his TCP port dynamically by Operating System
+        public const  int UdpClientPort = 60002;
 
         // UPD send and receive
-        public static byte[] ListenForUDP(Socket listenerSocket, EndPoint remoteEP)
+        public static byte[] ListenForUDP(Socket listenerSocket, EndPoint senderEP)
         {
+            EndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
             byte[] buffer = new byte[4096];
 
             try 
             {
+
                 int recieved = listenerSocket.ReceiveFrom(buffer, SocketFlags.None, ref remoteEP);
 
-                byte[] data = new byte[recieved];
-                Array.Copy(buffer, data, recieved);
+                if ((remoteEP as IPEndPoint).Port == (senderEP as IPEndPoint).Port)
+                {
+                    byte[] data = new byte[recieved];
+                    Array.Copy(buffer, data, recieved);
 
-                Console.WriteLine($"UDP received {data.Length} bytes from {remoteEP}");
-                Console.WriteLine(Message.FromBytes(data).Content);
-                return data;
+                    Console.WriteLine($"UDP {listenerSocket.LocalEndPoint} received {data.Length} bytes from {remoteEP}\n");
+                    return data;
+                }
+                else
+                {
+                    Console.WriteLine($"UDP {listenerSocket.LocalEndPoint} received packet from unexpected source {remoteEP}, expected {senderEP}\n");
+                }
+
             }
             catch (SocketException ex)
             {
                 Console.WriteLine($"SocketException: {ex.Message}");
-                return null;
             }
-
+            return (Array.Empty<byte>());
         }
-        public static void SendUdp(byte[] data, Socket acceptedSocket, EndPoint remoteEP)
+        public static int SendUdp(byte[] data, Socket acceptedSocket, EndPoint remoteEP)
         {
-            acceptedSocket.SendTo(data, remoteEP);
-            Console.WriteLine($"UDP sent {data.Length} bytes to {remoteEP}");
+            int sent = acceptedSocket.SendTo(data, remoteEP);
+            Console.WriteLine($"UDP {acceptedSocket.LocalEndPoint} sent {data.Length} bytes to {remoteEP}");
+            return sent;
         }
 
 
         // TCP send and receive
         public static byte[] ListenForTcp(Socket listenerSocket)
         {
-
             if (!listenerSocket.Connected)
                 throw new InvalidOperationException($"Socket {listenerSocket.RemoteEndPoint} is not connected.");
 
@@ -74,7 +83,7 @@ namespace MrezeProjekat.Helpers
                 totalReceived += received;
             }
 
-            Console.WriteLine($"TCP received {buffer.Length} bytes from {listenerSocket.RemoteEndPoint}");
+            Console.WriteLine($"TCP {listenerSocket.LocalEndPoint} received {buffer.Length} bytes from {listenerSocket.RemoteEndPoint}");
 
             return buffer;
         }
@@ -95,8 +104,10 @@ namespace MrezeProjekat.Helpers
                 totalSent += sent;
             }
 
+            Console.WriteLine($"TCP {acceptedSocket.LocalEndPoint} sent {totalSent} bytes to {acceptedSocket.RemoteEndPoint}");
+
         }
-        
+
         // Handshake
         public static bool NodeHandshake(int port, Socket nodeSocket)
         {
