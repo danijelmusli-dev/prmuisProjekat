@@ -16,7 +16,7 @@ namespace Server
 {
     public class Server
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             // Create the server socket (TCP)
             Socket serverSocketTCP = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -27,11 +27,11 @@ namespace Server
             serverSocketTCP.Bind(serverEP);
             serverSocketTCP.Listen(10);
 
-            //// Create the server socket (UDP)
-            // Bind server UDP socket na port na kojem očekuješ poruku od zadnjeg noda
+            // Create the server socket (UDP)
             Socket serverSocketUDP = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             serverSocketUDP.Bind(new IPEndPoint(IPAddress.Loopback, Networking.UdpServerPort));
 
+            // Form the TCP connection with client
             Console.WriteLine("Waiting for client...");
             Socket acceptedSocket = serverSocketTCP.Accept();
             Console.WriteLine($"Client connected: {(acceptedSocket.LocalEndPoint)}");
@@ -50,24 +50,19 @@ namespace Server
 
             // recieve last udp package
             // Placeholder za remote endpoint (popuniće se adresom pošiljaoca)
-            EndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
-            while (true)
-            {
-                byte[] buffer = new byte[1024];
-                int received = serverSocketUDP.ReceiveFrom(buffer, ref remoteEP);
-
-                Message msg = Message.FromBytes(buffer.Take(received).ToArray());
-                Console.WriteLine($"Primljen paket od {remoteEP}: {msg.Content}");
-
-                buffer = (CryptoHelper.CryptNTimes("SERVER RESPONSE", req.NodeNum, ins, false)).ToBytes();
-                Console.WriteLine($"Poslat paket na {remoteEP}");
-                serverSocketUDP.SendTo(buffer, remoteEP);
-               
-                if(msg.Content.Equals("pingvin")) break;
-            }
+            int lastNodePort = Networking.NodeBasePort + req.NodeNum - 1;
+            IPEndPoint lastNodeEP = new IPEndPoint(IPAddress.Loopback, lastNodePort);
 
 
+            // cancellation token for server UDP listener
+            CancellationTokenSource ctsListener = new CancellationTokenSource();
+            CancellationToken tokenListener = ctsListener.Token;
+
+            Task listenerTask = Task.Run(() => ListenForNodeResponseUDP(req, ins, serverSocketUDP, lastNodeEP, tokenListener), tokenListener);
+         
             // zatvori sve na kraju
+            await listenerTask;
+
             acceptedSocket.Shutdown(SocketShutdown.Both);
             acceptedSocket.Close();
             acceptedSocket.Dispose();
@@ -158,6 +153,35 @@ namespace Server
 
                 Networking.SendTcp(data, nodeSocket);
                 Console.WriteLine($"\nSending Node[{Networking.NodeBasePort + i}] {i + 1}  instructions:");
+            }
+        }
+
+        public static void ListenForNodeResponseUDP(Request req, Instructions ins, Socket listenerSocket, EndPoint nodeEP, CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                if (token.IsCancellationRequested)
+                    break;
+
+                byte[] buffer = Networking.ListenForUDP(listenerSocket, nodeEP);
+
+                Message msg = Message.FromBytes(buffer);
+                Console.WriteLine($"[SERVER] recived message from {nodeEP}: {msg.Content}");
+
+                if (msg.Content.Equals(Networking.EndString))
+                {
+                    buffer = (CryptoHelper.CryptNTimes(Networking.EndString, req.NodeNum, ins, false)).ToBytes();
+                    Networking.SendUdp(buffer, listenerSocket, nodeEP);
+                    break;
+                }
+
+                Array.Clear(buffer, 0, buffer.Length);
+                string responseContent = $"SERVER RESPONSE to '{msg.Content}'";
+                Message response = CryptoHelper.CryptNTimes(responseContent, req.NodeNum, ins, false);
+                
+                Console.WriteLine($"[SERVER] sent message {nodeEP}");
+                buffer = response.ToBytes();
+                Networking.SendUdp(buffer, listenerSocket, nodeEP);
             }
         }
 

@@ -35,7 +35,7 @@ namespace MrezeProjekat.Models
             get => _content;
             set => _content = value;
         }
-        public int Lenght => _lenght;
+        public int MessageLenght => _lenght;
         public int CheckSum => _checkSum;
 
         public byte[] ToBytes()
@@ -56,10 +56,15 @@ namespace MrezeProjekat.Models
             using (BinaryReader br = new BinaryReader(ms))
             {
                 string content = br.ReadString();
-                int length   = br.ReadInt32();
-                int checksum = br.ReadInt32();
+                int length     = br.ReadInt32();
+                int checksum   = br.ReadInt32();
                 return new Message(content, length, checksum);
             }
+        }
+
+        public override string ToString()
+        {
+            return $"\nMessage(Content: {this._content}, Length: {this._lenght}, CheckSum: {this._checkSum})";
         }
 
     }

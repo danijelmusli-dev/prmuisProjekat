@@ -45,11 +45,29 @@ namespace MrezeProjekat.Models
             // node is looping until the cancelatin from client is requested
             while (!token.IsCancellationRequested)
             {
+                try
+                {
+                    if (token.IsCancellationRequested)
+                        token.ThrowIfCancellationRequested();
+                }
+                catch (OperationCanceledException)
+                {
+                    Console.WriteLine($"\n[NODE {this.NodePort}] Cancellation requested, stopping node...");
+                    break;
+                }
+
                 // awaiting for data (Message object)
                 if (this._udpSocket.Poll(1_000_000, SelectMode.SelectRead))
                 {
+
                     Message message = this.ReceiveFromPrevNode();
                     Console.WriteLine($"[NODE {this.NodePort}] recieved message");
+
+                    if(!CheckMessage(message))
+                    {                        
+                        Console.WriteLine($"[NODE {this.NodePort}] invalid message, discarding...");
+                        continue;
+                    }
 
                     this.SendToNextNode(message);
                     Console.WriteLine($"[NODE {this.NodePort}] send message");
@@ -59,6 +77,8 @@ namespace MrezeProjekat.Models
                     Console.WriteLine($"[NODE {this.NodePort}] waiting...");
                 }
             }
+
+            this._udpSocket.Close();
 
         }
 
@@ -115,12 +135,15 @@ namespace MrezeProjekat.Models
             Console.WriteLine($"\n[NODE {this.NodePort}] recieved instructions:");
             Console.WriteLine(this.NodeInstructions.ToString() + '\n');
 
+            this._tcpSocket.Shutdown(SocketShutdown.Both);
+            this._tcpSocket.Close();
         }
 
         private byte[] PeelOffLayer(string message) // removes one layer of encryption from message
         {
-            byte[] cryptedMessage = Convert.FromBase64String(message);
 
+            byte[] cryptedMessage = Convert.FromBase64String(message);
+            
             byte[] key = this.NodeInstructions[0].Key;
             byte[] iv  = this.NodeInstructions[0].IV;
 
@@ -128,6 +151,37 @@ namespace MrezeProjekat.Models
             Console.WriteLine($"[NODE {this.NodePort}] peeled off layer: {decryptedMessage}");
             byte[] data = Encoding.UTF8.GetBytes(decryptedMessage);
             return data;
+        }
+
+        private bool CheckMessage(Message msg)
+        {
+            if (msg == null)
+            {
+                Console.WriteLine($"[NODE {this.NodePort}] message is null");
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(msg.Content))
+            {
+                Console.WriteLine($"[NODE {this.NodePort}] message content is null or empty");
+                return false;
+            }
+
+            int sum = msg.Content.Sum(c => (int)c);
+            if (msg.CheckSum != sum)
+            {
+                Console.WriteLine($"[NODE {this.NodePort}] message checksum mismatch {msg.CheckSum} : {sum}");
+                return false;
+            }
+
+            int len = msg.Content.Length;
+            if (msg.MessageLenght != len)
+            {
+                Console.WriteLine($"[NODE {this.NodePort}] message length mismatch {msg.MessageLenght} : {len}");
+                return false;
+            }
+
+            return true;
         }
 
     }

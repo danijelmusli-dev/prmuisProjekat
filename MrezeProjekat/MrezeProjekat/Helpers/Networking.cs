@@ -24,29 +24,24 @@ namespace MrezeProjekat.Helpers
         // Client gets his TCP port dynamically by Operating System
         public const  int UdpClientPort = 60002;
 
+        // String for ending the communication
+        public const string EndString = "END";
+
         // UPD send and receive
         public static byte[] ListenForUDP(Socket listenerSocket, EndPoint senderEP)
         {
             EndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
             byte[] buffer = new byte[4096];
 
-            try 
+            try
             {
-
                 int recieved = listenerSocket.ReceiveFrom(buffer, SocketFlags.None, ref remoteEP);
 
-                if ((remoteEP as IPEndPoint).Port == (senderEP as IPEndPoint).Port)
-                {
-                    byte[] data = new byte[recieved];
-                    Array.Copy(buffer, data, recieved);
+                byte[] data = new byte[recieved];
+                Array.Copy(buffer, data, recieved);
 
-                    Console.WriteLine($"UDP {listenerSocket.LocalEndPoint} received {data.Length} bytes from {remoteEP}\n");
-                    return data;
-                }
-                else
-                {
-                    Console.WriteLine($"UDP {listenerSocket.LocalEndPoint} received packet from unexpected source {remoteEP}, expected {senderEP}\n");
-                }
+                Console.WriteLine($"UDP {listenerSocket.LocalEndPoint} received {data.Length} bytes from {senderEP}\n");
+                return data;
 
             }
             catch (SocketException ex)
