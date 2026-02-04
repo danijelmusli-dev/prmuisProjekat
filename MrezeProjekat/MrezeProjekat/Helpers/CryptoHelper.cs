@@ -34,9 +34,10 @@ namespace MrezeProjekat.Helpers
                 using (MemoryStream ms = new MemoryStream())
                 {
                     using (CryptoStream cs = new CryptoStream(ms, aes.CreateEncryptor(), CryptoStreamMode.Write))
-                    using (StreamWriter sw = new StreamWriter(cs))
                     {
-                        sw.Write(plainText);
+                        byte[] bytes = Encoding.UTF8.GetBytes(plainText);
+                        cs.Write(bytes, 0, bytes.Length);
+                        cs.FlushFinalBlock();
                     }
                     return ms.ToArray();
                 }
@@ -78,24 +79,24 @@ namespace MrezeProjekat.Helpers
 
         public static Message CryptNTimes(string original, int times, Instructions instructions, bool clientServer)
         {
-            Message message = new Message(original);
+            string cryptString = original;
             if(clientServer)
             {
                 for (int i = times - 1; i >= 0; i--)
                 {
-                    message.Content = Convert.ToBase64String(CryptoHelper.EncryptStringToBytes(message.Content, instructions[i].Key, instructions[i].IV));
-                    Console.WriteLine($"{times - i} Layer of encryption: {message.Content}");
+                    cryptString = Convert.ToBase64String(CryptoHelper.EncryptStringToBytes(cryptString, instructions[i].Key, instructions[i].IV));
+                    //Console.WriteLine($"{times - i} Layer of encryption: {message.Content}");
                 }
             }
             else 
             {
                 for (int i = 0; i < times; i++)
                 {
-                    message.Content = Convert.ToBase64String(CryptoHelper.EncryptStringToBytes(message.Content, instructions[i].Key, instructions[i].IV));
-                    Console.WriteLine($"{i + 1} Layer of encryption: {message.Content}");
+                    cryptString = Convert.ToBase64String(CryptoHelper.EncryptStringToBytes(cryptString, instructions[i].Key, instructions[i].IV));
+                    //Console.WriteLine($"{i + 1} Layer of encryption: {cryptString.Substring(0, 20)}...");
                 }
             }
-            return message;
+            return new Message(cryptString);
         }
 
     }
