@@ -12,6 +12,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Spectre.Console;
+
 namespace Server
 {
     public class Server
@@ -31,22 +33,48 @@ namespace Server
             Socket serverSocketUDP = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             serverSocketUDP.Bind(new IPEndPoint(IPAddress.Loopback, Networking.UdpServerPort));
 
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+            Menu.OnionLogo();
+
+            bool endStringReceived = false;
+
+            #region spectre
+
+            ServerDashboard dashboard = new ServerDashboard();
+
+            Task dashTask = Task.Run(() =>
+            {
+                AnsiConsole.Live(dashboard.Root)
+                .Start(ctx =>
+                {
+                    while (!endStringReceived)
+                    {
+                        dashboard.RefreshPanels();
+                        ctx.Refresh();
+                        Thread.Sleep(100);
+                    }
+                });
+
+            });
+
+            #endregion  
+
             // Form the TCP connection with client
-            Console.WriteLine("Waiting for client...");
+            dashboard.AddClient("Waiting for client...");
             Socket acceptedSocket = serverSocketTCP.Accept();
-            Console.WriteLine($"Client connected: {(acceptedSocket.LocalEndPoint)}");
+            dashboard.AddClient($"Client connected: {(acceptedSocket.LocalEndPoint)}");
 
             // recieve client request
             Request req = RecieveRequestFromClient(acceptedSocket);
-            Console.WriteLine($"\nReceived request from: {acceptedSocket.LocalEndPoint as IPEndPoint}");
+            dashboard.AddClient($"\nReceived request from: {acceptedSocket.LocalEndPoint as IPEndPoint}");
 
             // send instructions (client only)
-            Console.WriteLine("\nSending instructions to client...");
+            dashboard.AddClient("\nSending instructions to client...");
             Instructions ins = SendInstructionsToClient(acceptedSocket, req);
 
             // send instructions for every node
-            Console.WriteLine("\nSending instructions to nodes...");
-            SendInstructionsForNodes(ins, req, serverSocketTCP);
+            dashboard.AddClient("\nSending instructions to nodes...");
+            SendInstructionsForNodes(ins, req, serverSocketTCP, dashboard);
 
             // recieve last udp package
             // Placeholder za remote endpoint (popuniće se adresom pošiljaoca)
@@ -58,7 +86,7 @@ namespace Server
             CancellationTokenSource ctsListener = new CancellationTokenSource();
             CancellationToken tokenListener = ctsListener.Token;
 
-            Task listenerTask = Task.Run(() => ListenForNodeResponseUDP(req, ins, serverSocketUDP, lastNodeEP, tokenListener), tokenListener);
+            Task listenerTask = Task.Run(() => ListenForNodeResponseUDP(req, ins, serverSocketUDP, lastNodeEP, tokenListener, dashboard), tokenListener);
          
             // zatvori sve na kraju
             await listenerTask;
@@ -123,7 +151,7 @@ namespace Server
             return ins;
         }
        
-        public static void SendInstructionsForNodes(Instructions ins, Request req, Socket serverSocket)
+        public static void SendInstructionsForNodes(Instructions ins, Request req, Socket serverSocket, ServerDashboard dash)
         {
             // send instructions for every node
             for (int i = 0; i < req.NodeNum; i++)
@@ -144,34 +172,34 @@ namespace Server
                 Socket nodeSocket = serverSocket.Accept();
 
                 // handshake and send instructions
-                Console.WriteLine($"\nWaiting handshake from Node[{Networking.NodeBasePort + i}]:");
+                dash.AddServer($"\nWaiting handshake from Node[[{Networking.NodeBasePort + i}]]:");
                 byte[] handshakeData = new byte[5];
                 nodeSocket.Receive(handshakeData);
 
                 if(Encoding.UTF8.GetString(handshakeData).Equals("READY"))
-                    Console.WriteLine($"Handshake received from Node[{Networking.NodeBasePort + i}]");
+                    dash.AddServer($"Handshake received from Node[[{Networking.NodeBasePort + i}]]");
 
-                Networking.SendTcp(data, nodeSocket);
-                Console.WriteLine($"\nSending Node[{Networking.NodeBasePort + i}] {i + 1}  instructions:");
+                Networking.SendTcp(data, nodeSocket, dash);
+                dash.AddServer($"Sending Node[[{Networking.NodeBasePort + i}]] {i + 1}  instructions:");
             }
         }
 
-        public static void ListenForNodeResponseUDP(Request req, Instructions ins, Socket listenerSocket, EndPoint nodeEP, CancellationToken token)
+        public static void ListenForNodeResponseUDP(Request req, Instructions ins, Socket listenerSocket, EndPoint nodeEP, CancellationToken token, ServerDashboard dash)
         {
             while (!token.IsCancellationRequested)
             {
                 if (token.IsCancellationRequested)
                     break;
 
-                byte[] buffer = Networking.ListenForUDP(listenerSocket, nodeEP);
+                byte[] buffer = Networking.ListenForUDP(listenerSocket, nodeEP, dash);
 
                 Message msg = Message.FromBytes(buffer);
-                Console.WriteLine($"[SERVER] recived message from {nodeEP}: {msg.Content}");
+                dash.AddInput($"[[SERVER]] recived message from {nodeEP}: {msg.Content}");
 
                 if (msg.Content.Equals(Networking.EndString))
                 {
                     buffer = (CryptoHelper.CryptNTimes(Networking.EndString, req.NodeNum, ins, false)).ToBytes();
-                    Networking.SendUdp(buffer, listenerSocket, nodeEP);
+                    Networking.SendUdp(buffer, listenerSocket, nodeEP, dash);
                     break;
                 }
 
@@ -179,9 +207,9 @@ namespace Server
                 string responseContent = $"SERVER RESPONSE to '{msg.Content}'";
                 Message response = CryptoHelper.CryptNTimes(responseContent, req.NodeNum, ins, false);
                 
-                Console.WriteLine($"[SERVER] sent message {nodeEP}");
+                dash.AddInput($"[[SERVER]] sent message {nodeEP}");
                 buffer = response.ToBytes();
-                Networking.SendUdp(buffer, listenerSocket, nodeEP);
+                Networking.SendUdp(buffer, listenerSocket, nodeEP, dash);
             }
         }
 
