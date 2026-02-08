@@ -46,7 +46,8 @@ namespace MrezeProjekat.Models
             this.NodePort = nodePort;
             this.ClientToServer = true;
 
-            // nakon prijema Instrukcija pokreni UDP socket
+            // After we receive instructions from the server for the node (TCP)
+            // we will initialize the UDP socket and bind it to the local endpoint.
             this._udpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             this._udpSocket.Blocking = false;
             this._udpSocket.Bind(this._localEP);
