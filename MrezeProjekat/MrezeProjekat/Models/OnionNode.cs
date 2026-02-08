@@ -24,6 +24,21 @@ namespace MrezeProjekat.Models
         private Socket _udpSocket;
         private Socket _tcpSocket;
 
+        private ClientDashboard _dashboard;
+        public ClientDashboard Dashboard
+        {
+            get => _dashboard;
+            set
+            {
+                this._dashboard = value;
+                
+                int colorIndex = (new Random(this.NodePort)).Next(0, this.Dashboard.nodeColors.Length - 1);
+                this.nodeColor = this.Dashboard.nodeColors[colorIndex];
+            }
+        }
+
+        string nodeColor;
+
         public OnionNode() { }
         public OnionNode(IPEndPoint nodeEP, int nodePort)
         {
@@ -31,7 +46,8 @@ namespace MrezeProjekat.Models
             this.NodePort = nodePort;
             this.ClientToServer = true;
 
-            // nakon prijema Instrukcija pokreni UDP socket
+            // After we receive instructions from the server for the node (TCP)
+            // we will initialize the UDP socket and bind it to the local endpoint.
             this._udpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             this._udpSocket.Blocking = false;
             this._udpSocket.Bind(this._localEP);
@@ -39,7 +55,7 @@ namespace MrezeProjekat.Models
 
         public void RunNode(CancellationToken token)
         {
-            Console.WriteLine($"[NODE {this.NodePort}] Starting polling loop...");
+            this.Dashboard.AddClient($"[white][[NODE {this.NodePort}]] Starting polling loop...[/]");
 
             // node main loop
             // node is looping until the cancelatin from client is requested
@@ -52,7 +68,7 @@ namespace MrezeProjekat.Models
                 }
                 catch (OperationCanceledException)
                 {
-                    Console.WriteLine($"\n[NODE {this.NodePort}] Cancellation requested, stopping node...");
+                    this.Dashboard.AddClient($"[red][[NODE {this.NodePort}]] Cancellation requested, stopping node...[/]");
                     break;
                 }
 
@@ -61,20 +77,20 @@ namespace MrezeProjekat.Models
                 {
 
                     Message message = this.ReceiveFromPrevNode();
-                    Console.WriteLine($"[NODE {this.NodePort}] recieved message");
+                    Console.WriteLine($"[ {this.nodeColor} ][[NODE {this.NodePort}]] recieved message");
 
                     if(!CheckMessage(message))
-                    {                        
-                        Console.WriteLine($"[NODE {this.NodePort}] invalid message, discarding...");
+                    {
+                        this.Dashboard.AddClient($"[red][[NODE {this.NodePort}]] invalid message, discarding...[/]");
                         continue;
                     }
 
                     this.SendToNextNode(message);
-                    Console.WriteLine($"[NODE {this.NodePort}] send message");
+                    this.Dashboard.AddClient($"[{this.nodeColor}][[NODE {this.NodePort}]] send message[/]");
                 }
                 else
                 {
-                    Console.WriteLine($"[NODE {this.NodePort}] waiting...");
+                    //Console.WriteLine($"[NODE {this.NodePort}] waiting...");
                 }
             }
 
@@ -95,7 +111,7 @@ namespace MrezeProjekat.Models
 
             // send the instance of Message 
             byte[] data = passNext.ToBytes(); 
-            Networking.SendUdp(data, this._udpSocket, nextEP);
+            Networking.SendUdp(data, this._udpSocket, nextEP, this._dashboard);
 
             // switching the mode after sending
             this.ClientToServer = !this.ClientToServer;
@@ -109,7 +125,7 @@ namespace MrezeProjekat.Models
               : (this.NodeInstructions.NextNode ?? new IPEndPoint(IPAddress.Any, Networking.UdpServerPort)); // Server -> Client
 
             // receive the instance of Message
-            byte[] data = Networking.ListenForUDP(this._udpSocket, prevEP);
+            byte[] data = Networking.ListenForUDP(this._udpSocket, prevEP, this._dashboard);
             if (data == null || data.Length == 0)
                 // no data received (transient).
                 // Return null or loop caller should handle null.
@@ -124,16 +140,16 @@ namespace MrezeProjekat.Models
             this._tcpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             this._tcpSocket.Bind(this._localEP);
 
-            while (!Networking.NodeHandshake(this.NodePort, this._tcpSocket))
+            while (!Networking.NodeHandshake(this.NodePort, this._tcpSocket, this.Dashboard))
             {
-                Console.WriteLine($"[NODE {this.NodePort}] Handshake failed, retrying...");
+                this.Dashboard.AddClient($"[indianred1][[NODE {this.NodePort}]] Handshake failed, retrying...[/]");
             }
 
-            byte[] data = Networking.ListenForTcp(this._tcpSocket);
-            NodeInstructions = Instructions.FromBytes(data);
-            
-            Console.WriteLine($"\n[NODE {this.NodePort}] recieved instructions:");
-            Console.WriteLine(this.NodeInstructions.ToString() + '\n');
+            byte[] data = Networking.ListenForTcp(this._tcpSocket, this.Dashboard);
+            this.NodeInstructions = Instructions.FromBytes(data);
+
+            this.Dashboard.AddClient($"[{this.nodeColor}][[NODE {this.NodePort}]] recieved instructions:[/]");
+            Menu.PrintInstructions(this.Dashboard, this.NodeInstructions);
 
             this._tcpSocket.Shutdown(SocketShutdown.Both);
             this._tcpSocket.Close();
@@ -148,7 +164,7 @@ namespace MrezeProjekat.Models
             byte[] iv  = this.NodeInstructions[0].IV;
 
             string decryptedMessage = CryptoHelper.DecryptStringFromBytes(cryptedMessage, key, iv);
-            Console.WriteLine($"[NODE {this.NodePort}] peeled off layer: {decryptedMessage}");
+            this.Dashboard.AddClient($"[{this.nodeColor}][[NODE {this.NodePort}]] peeled off layer: [/][#A8A8A8]{decryptedMessage}...[/]");
             byte[] data = Encoding.UTF8.GetBytes(decryptedMessage);
             return data;
         }
@@ -157,27 +173,27 @@ namespace MrezeProjekat.Models
         {
             if (msg == null)
             {
-                Console.WriteLine($"[NODE {this.NodePort}] message is null");
+                this.Dashboard.AddClient($"[indianred_1][[NODE {this.NodePort}]] message is null[/]");
                 return false;
             }
 
             if (string.IsNullOrEmpty(msg.Content))
             {
-                Console.WriteLine($"[NODE {this.NodePort}] message content is null or empty");
+                this.Dashboard.AddClient($"[indianred_1][[NODE {this.NodePort}]] message content is null or empty[/]");
                 return false;
             }
 
             int sum = msg.Content.Sum(c => (int)c);
             if (msg.CheckSum != sum)
             {
-                Console.WriteLine($"[NODE {this.NodePort}] message checksum mismatch {msg.CheckSum} : {sum}");
+                this.Dashboard.AddClient($"[indianred_1][[NODE {this.NodePort}]] message checksum mismatch {msg.CheckSum} : {sum}[/]");
                 return false;
             }
 
             int len = msg.Content.Length;
             if (msg.MessageLenght != len)
             {
-                Console.WriteLine($"[NODE {this.NodePort}] message length mismatch {msg.MessageLenght} : {len}");
+                this.Dashboard.AddClient($"[indianred_1][[NODE {this.NodePort}]] message length mismatch {msg.MessageLenght} : {len}[/]");
                 return false;
             }
 

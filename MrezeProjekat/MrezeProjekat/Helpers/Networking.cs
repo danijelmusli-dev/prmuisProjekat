@@ -1,12 +1,16 @@
 ﻿using MrezeProjekat.Models;
+using Spectre.Console;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Security.Policy;
 using System.Text;
 using System.Threading.Tasks;
+
+using MrezeProjekat.Dashboards;
 
 namespace MrezeProjekat.Helpers
 {
@@ -28,7 +32,7 @@ namespace MrezeProjekat.Helpers
         public const string EndString = "END";
 
         // UPD send and receive
-        public static byte[] ListenForUDP(Socket listenerSocket, EndPoint senderEP)
+        public static byte[] ListenForUDP(Socket listenerSocket, EndPoint senderEP, Dashboard dash)
         {
             EndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
             byte[] buffer = new byte[4096];
@@ -40,7 +44,7 @@ namespace MrezeProjekat.Helpers
                 byte[] data = new byte[recieved];
                 Array.Copy(buffer, data, recieved);
 
-                Console.WriteLine($"UDP {listenerSocket.LocalEndPoint} received {data.Length} bytes from {senderEP}\n");
+                dash.AddNetwork($"[green1]UDP[/] [italic white]{listenerSocket.LocalEndPoint}[/] [LightSteelBlue]received[/] [yellow2]{data.Length}[/] bytes from [white bold italic]{senderEP}[/]");
                 return data;
 
             }
@@ -50,16 +54,16 @@ namespace MrezeProjekat.Helpers
             }
             return (Array.Empty<byte>());
         }
-        public static int SendUdp(byte[] data, Socket acceptedSocket, EndPoint remoteEP)
+        public static int SendUdp(byte[] data, Socket acceptedSocket, EndPoint remoteEP, Dashboard dash)
         {
-            int sent = acceptedSocket.SendTo(data, remoteEP);
-            Console.WriteLine($"UDP {acceptedSocket.LocalEndPoint} sent {data.Length} bytes to {remoteEP}");
+            int sent = acceptedSocket.SendTo(data, remoteEP); 
+            dash.AddNetwork( $"[green1]UDP[/] [italic white]{acceptedSocket.LocalEndPoint}[/] [LightCoral]sent[/] [yellow2]{data.Length}[/] bytes to [white bold italic]{remoteEP}[/]");
             return sent;
         }
 
 
         // TCP send and receive
-        public static byte[] ListenForTcp(Socket listenerSocket)
+        public static byte[] ListenForTcp(Socket listenerSocket, Dashboard dash)
         {
             if (!listenerSocket.Connected)
                 throw new InvalidOperationException($"Socket {listenerSocket.RemoteEndPoint} is not connected.");
@@ -78,11 +82,11 @@ namespace MrezeProjekat.Helpers
                 totalReceived += received;
             }
 
-            Console.WriteLine($"TCP {listenerSocket.LocalEndPoint} received {buffer.Length} bytes from {listenerSocket.RemoteEndPoint}");
-
+            dash.AddNetwork($"[cyan1]TCP[/] [white italic]{listenerSocket.LocalEndPoint}[/] [LightSteelBlue]received[/] [yellow2]{buffer.Length}[/] bytes from [white bold italic]{listenerSocket.RemoteEndPoint}[/]");
+            
             return buffer;
         }
-        public static void SendTcp(byte[] data, Socket acceptedSocket)
+        public static void SendTcp(byte[] data, Socket acceptedSocket, Dashboard dash)
         {
             if (!acceptedSocket.Connected)
                 throw new InvalidOperationException($"Socket {acceptedSocket.RemoteEndPoint} is not connected.");
@@ -99,20 +103,19 @@ namespace MrezeProjekat.Helpers
                 totalSent += sent;
             }
 
-            Console.WriteLine($"TCP {acceptedSocket.LocalEndPoint} sent {totalSent} bytes to {acceptedSocket.RemoteEndPoint}");
-
+            dash.AddNetwork($"[cyan1]TCP[/] [black on white]{acceptedSocket.LocalEndPoint}[/] [LightCoral]sent[/] [black on yellow]{totalSent}[/] bytes to [white bold italic]{acceptedSocket.RemoteEndPoint}[/]");
         }
 
         // Handshake
-        public static bool NodeHandshake(int port, Socket nodeSocket)
+        public static bool NodeHandshake(int port, Socket nodeSocket, Dashboard dash)
         {
-            Console.WriteLine($"[NODE {port}] sending handshake to server");
+            dash.AddServer($"[yellow][[NODE {port}]] sending handshake to server [/]");
             IPEndPoint serverEP = new IPEndPoint(IPAddress.Loopback, Networking.TcpServerPort);
 
             nodeSocket.Connect(serverEP);
             int sent = nodeSocket.Send(Encoding.UTF8.GetBytes("READY"));
             
-            Console.WriteLine($"[NODE {port}] waiting for server response");
+            dash.AddServer($"[yellow][[NODE {port}]] waiting for server response [/]");
             return (sent == 5);
         }
 

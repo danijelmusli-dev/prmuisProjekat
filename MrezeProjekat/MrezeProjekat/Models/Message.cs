@@ -13,7 +13,6 @@ namespace MrezeProjekat.Models
         private int _lenght;
         private int _checkSum;
 
-        public Message() { }
         public Message(string content)
         {
             _content = content;
@@ -29,7 +28,6 @@ namespace MrezeProjekat.Models
             this._checkSum = checksum;
         }
 
-        // Only getters
         public string Content
         {
             get => _content;
@@ -43,10 +41,13 @@ namespace MrezeProjekat.Models
             using (MemoryStream ms = new MemoryStream())
             using (BinaryWriter bw = new BinaryWriter(ms))
             {
+                #region Field serialization
                 bw.Write(this._content);
                 bw.Write(this._lenght);
                 bw.Write(this._checkSum);
+
                 return ms.ToArray();
+                #endregion
             }
         }
 
@@ -55,10 +56,12 @@ namespace MrezeProjekat.Models
             using (MemoryStream ms = new MemoryStream(data))
             using (BinaryReader br = new BinaryReader(ms))
             {
+                #region Field deserialisation
                 string content = br.ReadString();
                 int length     = br.ReadInt32();
                 int checksum   = br.ReadInt32();
                 return new Message(content, length, checksum);
+                #endregion
             }
         }
 

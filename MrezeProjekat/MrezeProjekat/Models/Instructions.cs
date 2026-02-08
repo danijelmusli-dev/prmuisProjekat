@@ -28,7 +28,7 @@ public class Instructions
         this._nextNode = next;
     }
 
-    // indeksator sada radi sa CryptoKey
+    // indexing for CryptoKeys
     public CryptoKey this[int index]
     {
         get => this._keys[index];
@@ -43,14 +43,15 @@ public class Instructions
         using (MemoryStream ms = new MemoryStream())
         using (BinaryWriter bw = new BinaryWriter(ms))
         {
+            #region Field serialisation
             // Keys
             bw.Write(_keys.Length);
             foreach (var k in _keys)
             {
                 if (k == null)
                 {
-                    bw.Write(0); // dužina ključa = 0
-                    bw.Write(0); // dužina IV = 0
+                    bw.Write(0); // length key = 0
+                    bw.Write(0); // length IV  = 0
                 }
                 else
                 {
@@ -72,7 +73,7 @@ public class Instructions
                 bw.Write(prevAddr);
                 bw.Write(_prevNode.Port);
             }
-            else
+            else // handling null endpoints by writing zero-length addresses and port 0
             {
                 bw.Write(0); // no address
                 bw.Write(0); // port = 0
@@ -94,6 +95,7 @@ public class Instructions
             }
 
             return ms.ToArray();
+            #endregion
         }
     }
 
@@ -102,12 +104,13 @@ public class Instructions
         using (MemoryStream ms = new MemoryStream(data))
         using (BinaryReader br = new BinaryReader(ms))
         {
+            #region Field deserialisation
             // Keys
             int keyCount = br.ReadInt32();
             CryptoKey[] keys = new CryptoKey[keyCount];
             for (int i = 0; i < keyCount; i++)
             {
-                int keyLen = br.ReadInt32();
+                int keyLen = br.ReadInt32();    // serialising 
                 byte[] keyBytes = br.ReadBytes(keyLen);
 
                 int ivLen = br.ReadInt32();
@@ -120,10 +123,10 @@ public class Instructions
             }
 
             // PrevNode
-            // FromBytes: handle zero-length addresses by using null endpoints
             int prevLen = br.ReadInt32();
             byte[] prevAddr = br.ReadBytes(prevLen);
             int prevPort = br.ReadInt32();
+            // Handling zero-length addresses by using null endpoints
             IPEndPoint prevNode = (prevLen > 0) ? new IPEndPoint(new IPAddress(prevAddr), prevPort) : null;
 
             // NextNode
@@ -133,6 +136,7 @@ public class Instructions
             IPEndPoint nextNode = (nextLen > 0) ? new IPEndPoint(new IPAddress(nextAddr), nextPort) : null;
 
             return new Instructions(keys, prevNode, nextNode);
+            #endregion
         }
     }
 
@@ -142,14 +146,12 @@ public class Instructions
 
         #region PrevNode
         builder.Append("Prev Node: ");
-        //builder.Append("IPAdress: ");
         builder.Append(this.PrevNode?.Address?.ToString() ?? "None");
         builder.Append("\tPort: ");
         builder.AppendLine(this.PrevNode?.Port.ToString() ?? "None");
         #endregion
         #region NextNode
         builder.Append("Next Node: ");
-        //builder.Append("IPAdress: ");
         builder.Append(this.NextNode?.Address?.ToString() ?? "None");
         builder.Append("\tPort: ");
         builder.AppendLine(this.NextNode?.Port.ToString() ?? "None");

@@ -1,16 +1,17 @@
-﻿using System;
+﻿using MrezeProjekat;
+using MrezeProjekat.Helpers;
+using MrezeProjekat.Models;
+using Spectre.Console;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Security.Policy;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-
-using MrezeProjekat;
-using MrezeProjekat.Helpers;
-using MrezeProjekat.Models;
 
 namespace Client
 {
@@ -29,25 +30,49 @@ namespace Client
             // Servern EndPoint
             IPEndPoint serverEP = new IPEndPoint(IPAddress.Loopback, Networking.TcpServerPort);
             clientSocketTCP.Connect(serverEP);
-            Console.WriteLine($"{(clientSocketTCP.RemoteEndPoint as IPEndPoint).Port}");
-
 
 
             // Conditions for stopping the interaction
             int  maxMessages = 5;
             bool endStringReceived = false;
 
+            #region spectre
+
+            ClientDashboard dashboard = new ClientDashboard();
+
+            bool pauseDrawing = false;
+            Task dasgTask = Task.Run(() =>
+            {
+                AnsiConsole.Live(dashboard.Root)
+                .Start(ctx =>
+                {
+                    while (!endStringReceived)
+                    {
+                        if (!pauseDrawing)
+                        {
+                            dashboard.RefreshPanels();
+                            ctx.Refresh();
+                        }
+                        // osveži prikaz
+                        Thread.Sleep(100);          // delay između refresh-a
+                    }
+                });
+
+            });
+
+            #endregion
+
             // form the request (coming soon)
             // send request to the server
             // umesto new Request napraviceo f-ju gde korisnik formira zahtev
-            Request req = new Request(clientSocketTCP.LocalEndPoint as IPEndPoint, 4, maxMessages);
-            Console.WriteLine("Sending request to server...");
+            Request req = new Request(clientSocketTCP.LocalEndPoint as IPEndPoint, 5, maxMessages);
+            dashboard.AddClient("[yellow]Sending request to server...[/]");
             SendRequest(clientSocketTCP, req);
+            Menu.PrintRequest(dashboard, req);
 
             // recieve client instructions 
-            Console.WriteLine("Recieving instructions from server...");
+            dashboard.AddClient("[yellow]Recieving instructions from server...[/]");
             Instructions ins = RecieveInstructions(clientSocketTCP);
-            Console.Write(ins.ToString() + "\n\n");
 
             // form the Onion nodes
             List<OnionNode> onionNodes = new List<OnionNode>();
@@ -55,6 +80,7 @@ namespace Client
             {
                 IPEndPoint localEP = new IPEndPoint(IPAddress.Loopback, Networking.NodeBasePort + i);
                 OnionNode node = new OnionNode(localEP, Networking.NodeBasePort + i);
+                node.Dashboard = dashboard;
                 onionNodes.Add(node);
             }
 
@@ -75,7 +101,7 @@ namespace Client
             CancellationToken tokenListener = ctsListener.Token;
 
             // start server listener for UDP response from last node
-            Task listenerTask = Task.Run(() => ListenForNodeResponseUDP(clientSocketUDP, firstNodeEP, tokenListener), tokenListener);
+            Task listenerTask = Task.Run(() => ListenForNodeResponseUDP(clientSocketUDP, firstNodeEP, tokenListener, dashboard), tokenListener);
 
 
             // cancellation token for nodes
@@ -88,17 +114,17 @@ namespace Client
                 nodeTasks.Add(Task.Run(() => node.RunNode(tokenNodes), tokenNodes));
             }
 
-           
             while (!endStringReceived)
-            { 
-                Console.WriteLine("\nPress Enter to send another message: ");
+            {
                 string input = Console.ReadLine();
+                pauseDrawing = true;
+                dashboard.AddInput($"[bold]{input}[/]");
+                pauseDrawing = false;
 
                 // crypt the message N times
                 Message nextMessage = CryptoHelper.CryptNTimes(input, req.NodeNum, ins, true);
                 
-                int sent = Networking.SendUdp(nextMessage.ToBytes(), clientSocketUDP, firstNodeEP);
-                Console.WriteLine($"\nUDP sending {sent} bytes to first node [{firstNodeEP.Address}:{firstNodeEP.Port}]...");
+                int sent = Networking.SendUdp(nextMessage.ToBytes(), clientSocketUDP, firstNodeEP, dashboard);
 
                 Thread.Sleep(500); // wait for response
                 endStringReceived = input.Equals(Networking.EndString);
@@ -111,10 +137,11 @@ namespace Client
             {
                 await Task.WhenAll(nodeTasks);
                 await listenerTask;
+                await dasgTask;
             }
             catch (OperationCanceledException)
             {
-                Console.WriteLine("\nOnion nodes have been stopped.");
+                dashboard.AddClient("[red]Onion nodes have been stopped.[/]");
             }
 
             // closing of the socket
@@ -165,21 +192,19 @@ namespace Client
             return ins;
         }
 
-        public static void ListenForNodeResponseUDP(Socket listenerSocket, EndPoint nodeEP, CancellationToken token) 
+        public static void ListenForNodeResponseUDP(Socket listenerSocket, EndPoint nodeEP, CancellationToken token, ClientDashboard dash) 
         {
             while (!token.IsCancellationRequested)
             {
-                byte[] buffer = Networking.ListenForUDP(listenerSocket, nodeEP);
+                byte[] buffer = Networking.ListenForUDP(listenerSocket, nodeEP, dash);
 
                 Message msg = Message.FromBytes(buffer);
-                Console.WriteLine($"Primljen paket od {nodeEP}: {msg.Content}");
-
-                Console.WriteLine($"[CLIENT] Primljen paket od {nodeEP}: {msg.Content}");
+                dash.AddServer($"[yellow]Recieved message from {nodeEP}: {msg.Content} [/]");
 
                 if (msg.Content.Equals("END"))
                     break;
             }
-            Console.WriteLine("Client UDP listener stopping...");
+            dash.AddServer("[indianred]Client UDP listener stopping...[/]");
         }
 
     }
