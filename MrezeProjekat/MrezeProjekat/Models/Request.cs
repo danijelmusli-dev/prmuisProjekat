@@ -40,6 +40,7 @@ namespace MrezeProjekat.Models
             using (MemoryStream ms = new MemoryStream())
             using (BinaryWriter bw = new BinaryWriter(ms))
             {
+                #region Field serialization
                 // lenght IP & IP
                 bw.Write(addrBytes.Length);
                 bw.Write(addrBytes);
@@ -50,7 +51,9 @@ namespace MrezeProjekat.Models
                 // nodeNum & maxMessages
                 bw.Write(this._nodeNum);
                 bw.Write(this._maxMessages);
+                
                 return ms.ToArray();
+                #endregion
             }
         }
 
@@ -59,6 +62,7 @@ namespace MrezeProjekat.Models
             using (MemoryStream ms = new MemoryStream(data))
             using (BinaryReader br = new BinaryReader(ms))
             {
+                #region Field deserialisation
                 // lenght IP & IP
                 int addrLen = br.ReadInt32();
                 byte[] addrBytes = br.ReadBytes(addrLen);
@@ -74,6 +78,7 @@ namespace MrezeProjekat.Models
                 int maxMessages = br.ReadInt32();
 
                 return new Request(endPoint, nodeNum, maxMessages);
+                #endregion
             }
         }
 
