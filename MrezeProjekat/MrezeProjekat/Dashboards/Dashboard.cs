@@ -11,7 +11,9 @@ namespace MrezeProjekat.Dashboards
     public abstract class Dashboard
     {
         protected Layout _root;
-        public string[] nodeColors = new[]
+        protected readonly List<string> _logs = new List<string>();
+
+        public static string[] nodeColors = new[]
         {
             "#E6E6FA", // lavender
             "#FFE1FF", // thistle1
@@ -29,17 +31,13 @@ namespace MrezeProjekat.Dashboards
             "#F5F5F5"  // whitesmoke
         };
 
-        public Layout Root => _root;
+        public Layout Root => this._root;
 
-        // zajedničke metode za dodavanje logova
-        protected readonly List<string> _logs = new List<string>();
-        public void AddLog(string text) => _logs.Add($"[{DateTime.Now:HH:mm:ss}] {text}");
-
+        // apstract methods for inheritance
         public abstract void AddClient(string text);
         public abstract void AddServer(string text);
         public abstract void AddNetwork(string text);
-
-        // apstraktne metode koje deca moraju da implementiraju
+        
         public abstract void RefreshPanels();
 
     }

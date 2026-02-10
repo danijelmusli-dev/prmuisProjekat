@@ -10,9 +10,9 @@ using System.Threading.Tasks;
 
 public class Instructions
 {
-    private CryptoKey[] _keys;
-    private IPEndPoint _prevNode;
-    private IPEndPoint _nextNode;
+    private CryptoKey[] _keys;    // Array of cryptographic keys for each node in the path
+    private IPEndPoint _prevNode; // Previous node's IP endpoint (null -> client)
+    private IPEndPoint _nextNode; // Next     node's IP endpoint (null -> server)
 
     public Instructions(int keyNum, IPEndPoint prev, IPEndPoint next)
     {

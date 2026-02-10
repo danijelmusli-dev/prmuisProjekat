@@ -9,18 +9,17 @@ namespace MrezeProjekat.Models
 {
     public class Message
     {
-        private string _content;
-        private int _lenght;
-        private int _checkSum;
+        private string _content; // String content of the message
+        private int _lenght;     // Length of the string content
+        private int _checkSum;   // Sum of all ASCII values of the string content
 
         public Message(string content)
         {
             _content = content;
             this._lenght = content.Length;
-
-            // Sum of all ASCII values of the string content
             this._checkSum = content.Sum(c => (int)c);
         }
+
         public Message(string content, int length, int checksum)
         {
             _content = content;

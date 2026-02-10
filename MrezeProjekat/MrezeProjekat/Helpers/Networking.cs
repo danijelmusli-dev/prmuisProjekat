@@ -23,6 +23,11 @@ namespace MrezeProjekat.Helpers
         public const int TcpServerPort = 50001;
         public const int UdpServerPort = 50002;
 
+        // Server IP Adress
+        public const string ServerIPAdress = "192.168.0.25"; // "192.168.0.25"
+        // Client IP Adress
+        public const string ClientIPAdress = "192.168.0.25"; // "192.168.0.25"
+
         // Client ports
         // TcpClientPort not declared because of operating system TIME_WAIT period 
         // Client gets his TCP port dynamically by Operating System
@@ -32,48 +37,49 @@ namespace MrezeProjekat.Helpers
         public const string EndString = "END";
 
         // UPD send and receive
-        public static byte[] ListenForUDP(Socket listenerSocket, EndPoint senderEP, Dashboard dash)
+        public static byte[] ListenForUDP(Socket listenerSocket, EndPoint senderEP)
         {
-            EndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
+            //EndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
             byte[] buffer = new byte[4096];
 
             try
             {
-                int recieved = listenerSocket.ReceiveFrom(buffer, SocketFlags.None, ref remoteEP);
+
+                int recieved = listenerSocket.ReceiveFrom(buffer, SocketFlags.None, ref senderEP);
 
                 byte[] data = new byte[recieved];
                 Array.Copy(buffer, data, recieved);
 
-                dash.AddNetwork($"[green1]UDP[/] [italic white]{listenerSocket.LocalEndPoint}[/] [LightSteelBlue]received[/] [yellow2]{data.Length}[/] bytes from [white bold italic]{senderEP}[/]");
+                AnsiConsole.MarkupLineInterpolated($"\t\t>>> [green1]UDP[/] [italic white]{listenerSocket.LocalEndPoint}[/] [LightSteelBlue]received[/] [yellow2]{data.Length}[/] bytes from [white bold italic]{senderEP}[/]");
                 return data;
 
             }
             catch (SocketException ex)
             {
-                Console.WriteLine($"SocketException: {ex.Message}");
+                //Console.WriteLine($"SocketException: {ex.Message}");
             }
             return (Array.Empty<byte>());
         }
-        public static int SendUdp(byte[] data, Socket acceptedSocket, EndPoint remoteEP, Dashboard dash)
+        public static int SendUdp(byte[] data, Socket acceptedSocket, EndPoint remoteEP)
         {
-            int sent = acceptedSocket.SendTo(data, remoteEP); 
-            dash.AddNetwork( $"[green1]UDP[/] [italic white]{acceptedSocket.LocalEndPoint}[/] [LightCoral]sent[/] [yellow2]{data.Length}[/] bytes to [white bold italic]{remoteEP}[/]");
+            int sent = acceptedSocket.SendTo(data, remoteEP);
+            AnsiConsole.MarkupLineInterpolated($"\t\t>>> [green1]UDP[/] [italic white]{acceptedSocket.LocalEndPoint}[/] [LightCoral]sent[/] [yellow2]{data.Length}[/] bytes to [white bold italic]{remoteEP}[/]");
             return sent;
         }
 
 
         // TCP send and receive
-        public static byte[] ListenForTcp(Socket listenerSocket, Dashboard dash)
+        public static byte[] ListenForTcp(Socket listenerSocket)
         {
             if (!listenerSocket.Connected)
                 throw new InvalidOperationException($"Socket {listenerSocket.RemoteEndPoint} is not connected.");
 
-            // primi dužinu
+            // recieve the length
             byte[] lengthBuffer = new byte[4];
             int read = listenerSocket.Receive(lengthBuffer);
             int dataLength = BitConverter.ToInt32(lengthBuffer, 0);
 
-            // primi podatke
+            // recieve the data
             byte[] buffer = new byte[dataLength];
             int totalReceived = 0;
             while (totalReceived < dataLength)
@@ -82,11 +88,12 @@ namespace MrezeProjekat.Helpers
                 totalReceived += received;
             }
 
-            dash.AddNetwork($"[cyan1]TCP[/] [white italic]{listenerSocket.LocalEndPoint}[/] [LightSteelBlue]received[/] [yellow2]{buffer.Length}[/] bytes from [white bold italic]{listenerSocket.RemoteEndPoint}[/]");
+            AnsiConsole.MarkupLineInterpolated($"\t\t>>> [cyan1]TCP[/] [white italic]{listenerSocket.LocalEndPoint}[/] [LightSteelBlue]received[/] [yellow2]{buffer.Length}[/] bytes from [white bold italic]{listenerSocket.RemoteEndPoint}[/]");
             
             return buffer;
         }
-        public static void SendTcp(byte[] data, Socket acceptedSocket, Dashboard dash)
+
+        public static void SendTcp(byte[] data, Socket acceptedSocket)
         {
             if (!acceptedSocket.Connected)
                 throw new InvalidOperationException($"Socket {acceptedSocket.RemoteEndPoint} is not connected.");
@@ -103,19 +110,19 @@ namespace MrezeProjekat.Helpers
                 totalSent += sent;
             }
 
-            dash.AddNetwork($"[cyan1]TCP[/] [black on white]{acceptedSocket.LocalEndPoint}[/] [LightCoral]sent[/] [black on yellow]{totalSent}[/] bytes to [white bold italic]{acceptedSocket.RemoteEndPoint}[/]");
+            AnsiConsole.MarkupLineInterpolated($"\t\t>>> [cyan1]TCP[/] [black on white]{acceptedSocket.LocalEndPoint}[/] [LightCoral]sent[/] [black on yellow]{totalSent}[/] bytes to [white bold italic]{acceptedSocket.RemoteEndPoint}[/]");
         }
 
-        // Handshake
-        public static bool NodeHandshake(int port, Socket nodeSocket, Dashboard dash)
+        // Handshake that happends before NODE recieves instructions from server using TCP
+        public static bool NodeHandshake(int port, Socket nodeSocket)
         {
-            dash.AddServer($"[yellow][[NODE {port}]] sending handshake to server [/]");
-            IPEndPoint serverEP = new IPEndPoint(IPAddress.Loopback, Networking.TcpServerPort);
+            AnsiConsole.MarkupLineInterpolated($"\t[yellow1][white][[NODE {port}]][/] sending handshake to server [/]");
+            IPEndPoint serverEP = new IPEndPoint(IPAddress.Parse(Networking.ServerIPAdress), Networking.TcpServerPort);
 
             nodeSocket.Connect(serverEP);
             int sent = nodeSocket.Send(Encoding.UTF8.GetBytes("READY"));
             
-            dash.AddServer($"[yellow][[NODE {port}]] waiting for server response [/]");
+            AnsiConsole.MarkupLineInterpolated($"\t[yellow1][white][[NODE {port}]][/] waiting for server response [/]");
             return (sent == 5);
         }
 

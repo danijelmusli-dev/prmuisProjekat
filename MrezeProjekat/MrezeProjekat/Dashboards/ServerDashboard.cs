@@ -19,10 +19,13 @@ namespace MrezeProjekat.Helpers
 
         private readonly List<string> _clientsS = new List<string>();
         private readonly List<string> _serversS = new List<string>();
-        private readonly List<string> _inputsS = new List<string>();
+        private readonly List<string> _inputsS  = new List<string>();
 
         protected readonly int maxLogs = 20;
+        private bool _update = false;
 
+        // The Dashboard constructor defines the 
+        // structural layout of the server console
         public ServerDashboard()
         {
             _root = new Layout("Root")
@@ -37,9 +40,8 @@ namespace MrezeProjekat.Helpers
                     )
                 );
 
-            // ubaci ASCII logo u panel
             _logo.Update(
-                new Panel(new Markup(this._logoString)).Expand().Border(BoxBorder.None) // možeš da promeniš okvir
+                new Panel(new Markup(this._logoString)).Expand().Border(BoxBorder.None)
             );
 
             _topRight.Update(new Panel("").Header("[blue]Input[/]").Expand());
@@ -61,10 +63,12 @@ namespace MrezeProjekat.Helpers
         ";
 
 
-        public override void AddClient(string text) => _clientsS.Add(text);
-        public override void AddServer(string text) => _serversS.Add(text);
+        public override void AddClient(string text) { _clientsS.Add(text); _update = true; }
+        public override void AddServer(string text) { _serversS.Add(text); _update = true; }
         public override void AddNetwork(string text) { return; }
-        public void AddInput(string text) => _inputsS.Add(text);
+        public void AddInput(string text) { _inputsS.Add(text); _update = true; }
+
+        public bool NeedsUpdate() { return _update; }
 
         public override void RefreshPanels()
         {
@@ -79,6 +83,8 @@ namespace MrezeProjekat.Helpers
             if (_inputsS.Count >= maxLogs) _inputsS.RemoveAt(0);
             _topRight.Update(new Panel(new Markup(string.Join("\n", _inputsS)))
                 .Header("[blue]Input[/]").Expand());
+
+            this._update = false;
         }
 
 

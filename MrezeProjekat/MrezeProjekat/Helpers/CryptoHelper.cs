@@ -18,14 +18,13 @@ namespace MrezeProjekat.Helpers
         public static byte[] EncryptStringToBytes(string plainText, byte[] Key, byte[] IV)
         {
             #region CheckParameters
-            if (string.IsNullOrEmpty(plainText))
-                throw new ArgumentNullException("Plain text cannot be null or empty");
             if (Key == null || (Key.Length != 16 && Key.Length != 24 && Key.Length != 32))
                 throw new ArgumentException("Key must be 128, 192, or 256 bits.", nameof(Key));
             if (IV == null || IV.Length != 16)
                 throw new ArgumentException("IV must be 128 bits (16 bytes).", nameof(IV));
             #endregion
 
+            #region Encryption
             using (Aes aes = Aes.Create())
             {
                 aes.Key = Key;
@@ -42,19 +41,19 @@ namespace MrezeProjekat.Helpers
                     return ms.ToArray();
                 }
             }
+            #endregion
         }
 
         public static string DecryptStringFromBytes(byte[] cipherText, byte[] Key, byte[] IV)
         {
             #region CheckParameters
-            if (cipherText == null || cipherText.Length == 0)
-                throw new ArgumentException("Cipher text cannot be null or empty.", nameof(cipherText));
             if (Key == null || (Key.Length != 16 && Key.Length != 24 && Key.Length != 32))
                 throw new ArgumentException("Key must be 128, 192, or 256 bits.", nameof(Key));
             if (IV == null || IV.Length != 16)
                 throw new ArgumentException("IV must be 128 bits (16 bytes).", nameof(IV));
             #endregion
 
+            #region Decryption
             try
             {
                 using (Aes aes = Aes.Create())
@@ -75,13 +74,17 @@ namespace MrezeProjekat.Helpers
                 Console.WriteLine(ex.Message);
                 return string.Empty;
             }
+            #endregion
         }
 
         public static Message CryptNTimes(string original, int times, Instructions instructions, bool clientServer)
         {
             string cryptString = original;
+
             if(clientServer)
             {
+                // Encrypt in reverse order for client->server communication
+                // message ( encrypted: key3 -> key2 -> key1 ) 
                 for (int i = times - 1; i >= 0; i--)
                 {
                     cryptString = Convert.ToBase64String(CryptoHelper.EncryptStringToBytes(cryptString, instructions[i].Key, instructions[i].IV));
@@ -90,12 +93,15 @@ namespace MrezeProjekat.Helpers
             }
             else 
             {
+                // Encrypt in normal order for server->client communication
+                // message ( encrypted: key1 -> key2 -> key3 ) 
                 for (int i = 0; i < times; i++)
                 {
                     cryptString = Convert.ToBase64String(CryptoHelper.EncryptStringToBytes(cryptString, instructions[i].Key, instructions[i].IV));
                     //Console.WriteLine($"{i + 1} Layer of encryption: {cryptString.Substring(0, 20)}...");
                 }
             }
+
             return new Message(cryptString);
         }
 

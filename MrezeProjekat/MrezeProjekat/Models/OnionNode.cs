@@ -1,4 +1,6 @@
-﻿using MrezeProjekat.Helpers;
+﻿using MrezeProjekat.Dashboards;
+using MrezeProjekat.Helpers;
+using Spectre.Console;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -15,27 +17,16 @@ namespace MrezeProjekat.Models
 {
     public class OnionNode
     {
-        public int NodePort  { get; set; }
-        public bool ClientToServer { get; set; }
+        public int NodePort                  { get; set; }
+        public bool ClientToServer           { get; set; }
         public Instructions NodeInstructions { get; set; }
 
-        private IPEndPoint _localEP;
+        private IPEndPoint _localEP; 
 
         private Socket _udpSocket;
         private Socket _tcpSocket;
 
-        private ClientDashboard _dashboard;
-        public ClientDashboard Dashboard
-        {
-            get => _dashboard;
-            set
-            {
-                this._dashboard = value;
-                
-                int colorIndex = (new Random(this.NodePort)).Next(0, this.Dashboard.nodeColors.Length - 1);
-                this.nodeColor = this.Dashboard.nodeColors[colorIndex];
-            }
-        }
+        private static readonly Random _rand = new Random(); // generating node colors
 
         string nodeColor;
 
@@ -46,6 +37,8 @@ namespace MrezeProjekat.Models
             this.NodePort = nodePort;
             this.ClientToServer = true;
 
+            this.nodeColor = (Dashboard.nodeColors[_rand.Next(0, Dashboard.nodeColors.Length)]);
+
             // After we receive instructions from the server for the node (TCP)
             // we will initialize the UDP socket and bind it to the local endpoint.
             this._udpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
@@ -55,7 +48,7 @@ namespace MrezeProjekat.Models
 
         public void RunNode(CancellationToken token)
         {
-            this.Dashboard.AddClient($"[white][[NODE {this.NodePort}]] Starting polling loop...[/]");
+           //AnsiConsole.MarkupLineInterpolated($"[white][[NODE {this.NodePort}]] Starting polling loop...[/]");
 
             // node main loop
             // node is looping until the cancelatin from client is requested
@@ -63,12 +56,13 @@ namespace MrezeProjekat.Models
             {
                 try
                 {
+                    // check for cancellation before polling
                     if (token.IsCancellationRequested)
                         token.ThrowIfCancellationRequested();
                 }
                 catch (OperationCanceledException)
                 {
-                    this.Dashboard.AddClient($"[red][[NODE {this.NodePort}]] Cancellation requested, stopping node...[/]");
+                    AnsiConsole.MarkupLineInterpolated($"\t\t[red][[NODE {this.NodePort}]] Cancellation requested, stopping node...[/]");
                     break;
                 }
 
@@ -76,24 +70,28 @@ namespace MrezeProjekat.Models
                 if (this._udpSocket.Poll(1_000_000, SelectMode.SelectRead))
                 {
 
+                    AnsiConsole.MarkupLineInterpolated($"\t\t[{this.nodeColor}][[NODE {this.NodePort}]] recieved message [/]");
                     Message message = this.ReceiveFromPrevNode();
-                    Console.WriteLine($"[ {this.nodeColor} ][[NODE {this.NodePort}]] recieved message");
 
-                    if(!CheckMessage(message))
+                    // validate the message (checksum and length)
+                    if (!CheckMessage(message))
                     {
-                        this.Dashboard.AddClient($"[red][[NODE {this.NodePort}]] invalid message, discarding...[/]");
+                        AnsiConsole.MarkupLineInterpolated($"\t\t[red][[NODE {this.NodePort}]] invalid message, discarding...[/]");
                         continue;
                     }
 
-                    this.SendToNextNode(message);
-                    this.Dashboard.AddClient($"[{this.nodeColor}][[NODE {this.NodePort}]] send message[/]");
-                }
-                else
-                {
-                    //Console.WriteLine($"[NODE {this.NodePort}] waiting...");
+                    // validate sending 
+                    try
+                    {
+                        AnsiConsole.MarkupLineInterpolated($"\t\t[{this.nodeColor}][[NODE {this.NodePort}]] send message[/]");
+                        this.SendToNextNode(message);
+                    }
+                    catch (Exception) { AnsiConsole.MarkupLineInterpolated($"\t\t[red][[NODE {this.NodePort}]] nodes coliding[/]"); }
+                    AnsiConsole.MarkupLine("\n");
                 }
             }
 
+            // closing the node socket
             this._udpSocket.Close();
 
         }
@@ -102,7 +100,7 @@ namespace MrezeProjekat.Models
         {
             // Determine next endpoint based on current mode
             EndPoint nextEP = (ClientToServer) ?
-                (this.NodeInstructions.NextNode ?? new IPEndPoint(IPAddress.Loopback, Networking.UdpServerPort))  // Client -> Server
+                (this.NodeInstructions.NextNode ?? new IPEndPoint(IPAddress.Parse(Networking.ServerIPAdress), Networking.UdpServerPort))  // Client -> Server
               : (this.NodeInstructions.PrevNode ?? new IPEndPoint(IPAddress.Loopback, Networking.UdpClientPort)); // Server -> Client
 
             // peel off one layer of encryption from message
@@ -111,7 +109,7 @@ namespace MrezeProjekat.Models
 
             // send the instance of Message 
             byte[] data = passNext.ToBytes(); 
-            Networking.SendUdp(data, this._udpSocket, nextEP, this._dashboard);
+            Networking.SendUdp(data, this._udpSocket, nextEP);
 
             // switching the mode after sending
             this.ClientToServer = !this.ClientToServer;
@@ -121,11 +119,11 @@ namespace MrezeProjekat.Models
         {
             // Determine previous endpoint based on current mode
             EndPoint prevEP = (ClientToServer) ?
-                (this.NodeInstructions.PrevNode ?? new IPEndPoint(IPAddress.Any, Networking.UdpClientPort))  // Client -> Server
-              : (this.NodeInstructions.NextNode ?? new IPEndPoint(IPAddress.Any, Networking.UdpServerPort)); // Server -> Client
+                (this.NodeInstructions.PrevNode ?? new IPEndPoint(IPAddress.Loopback, Networking.UdpClientPort))  // Client -> Server
+              : (this.NodeInstructions.NextNode ?? new IPEndPoint(IPAddress.Parse(Networking.ServerIPAdress), Networking.UdpServerPort)); // Server -> Client
 
             // receive the instance of Message
-            byte[] data = Networking.ListenForUDP(this._udpSocket, prevEP, this._dashboard);
+            byte[] data = Networking.ListenForUDP(this._udpSocket, prevEP);
             if (data == null || data.Length == 0)
                 // no data received (transient).
                 // Return null or loop caller should handle null.
@@ -136,35 +134,48 @@ namespace MrezeProjekat.Models
 
         public void ReceiveInstructionsForNode()
         {
+            #region Node TCP Connection and Handshake
             this._tcpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             this._tcpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            this._tcpSocket.Bind(this._localEP);
+            //this._tcpSocket.Bind(this._localEP);
 
-            while (!Networking.NodeHandshake(this.NodePort, this._tcpSocket, this.Dashboard))
+            while (!Networking.NodeHandshake(this.NodePort, this._tcpSocket))
             {
-                this.Dashboard.AddClient($"[indianred1][[NODE {this.NodePort}]] Handshake failed, retrying...[/]");
+                AnsiConsole.MarkupLineInterpolated($"\t\t[indianred1][[NODE {this.NodePort}]] Handshake failed, retrying...[/]");
             }
+            #endregion
 
-            byte[] data = Networking.ListenForTcp(this._tcpSocket, this.Dashboard);
+            byte[] data = Networking.ListenForTcp(this._tcpSocket);
             this.NodeInstructions = Instructions.FromBytes(data);
 
-            this.Dashboard.AddClient($"[{this.nodeColor}][[NODE {this.NodePort}]] recieved instructions:[/]");
-            Menu.PrintInstructions(this.Dashboard, this.NodeInstructions);
+            AnsiConsole.MarkupLineInterpolated($"\t\t[{this.nodeColor}][[NODE {this.NodePort}]] recieved instructions:[/]");
+            Menu.PrintInstructions(this.NodeInstructions);
 
+            #region TCP Socket Cleanup
             this._tcpSocket.Shutdown(SocketShutdown.Both);
             this._tcpSocket.Close();
+            #endregion
         }
 
         private byte[] PeelOffLayer(string message) // removes one layer of encryption from message
         {
+            // message is base64 string of the encrypted data,
+            // so we need to convert it back to byte array before decryption
+
+            if (message.Length % 4 != 0)
+                throw new FormatException();
 
             byte[] cryptedMessage = Convert.FromBase64String(message);
             
-            byte[] key = this.NodeInstructions[0].Key;
-            byte[] iv  = this.NodeInstructions[0].IV;
+            byte[] key = this.NodeInstructions[0].Key; // get the key given to this node for decryption
+            byte[] iv  = this.NodeInstructions[0].IV;  // get the IV  given to this node for decryption
 
+            // decrypt the message
             string decryptedMessage = CryptoHelper.DecryptStringFromBytes(cryptedMessage, key, iv);
-            this.Dashboard.AddClient($"[{this.nodeColor}][[NODE {this.NodePort}]] peeled off layer: [/][#A8A8A8]{decryptedMessage}...[/]");
+
+            AnsiConsole.MarkupLineInterpolated($"\t\t[{this.nodeColor}][[NODE {this.NodePort}]] peeled off layer: [/][#A8A8A8]{new string(decryptedMessage.Take(30).ToArray())}...[/]");
+
+            // return the decrypted message as byte array for the next node
             byte[] data = Encoding.UTF8.GetBytes(decryptedMessage);
             return data;
         }
@@ -173,27 +184,27 @@ namespace MrezeProjekat.Models
         {
             if (msg == null)
             {
-                this.Dashboard.AddClient($"[indianred_1][[NODE {this.NodePort}]] message is null[/]");
+                AnsiConsole.MarkupLineInterpolated($"\t\t[red][[NODE {this.NodePort}]] message is null[/]");
                 return false;
             }
 
             if (string.IsNullOrEmpty(msg.Content))
             {
-                this.Dashboard.AddClient($"[indianred_1][[NODE {this.NodePort}]] message content is null or empty[/]");
+                AnsiConsole.MarkupLineInterpolated($"\t\t[red][[NODE {this.NodePort}]] message content is null or empty[/]");
                 return false;
             }
 
-            int sum = msg.Content.Sum(c => (int)c);
+            int sum = msg.Content.Sum(c => (int)c); // calculate the checksum of the message content (ASCII sum)
             if (msg.CheckSum != sum)
             {
-                this.Dashboard.AddClient($"[indianred_1][[NODE {this.NodePort}]] message checksum mismatch {msg.CheckSum} : {sum}[/]");
+                AnsiConsole.MarkupLineInterpolated($"\t\t[red][[NODE {this.NodePort}]] message checksum mismatch {msg.CheckSum} : {sum}[/]");
                 return false;
             }
 
-            int len = msg.Content.Length;
+            int len = msg.Content.Length; // calculate the length of the message content
             if (msg.MessageLenght != len)
             {
-                this.Dashboard.AddClient($"[indianred_1][[NODE {this.NodePort}]] message length mismatch {msg.MessageLenght} : {len}[/]");
+                AnsiConsole.MarkupLineInterpolated($"\t\t[red][[NODE {this.NodePort}]] message length mismatch {msg.MessageLenght} : {len}[/]");
                 return false;
             }
 
