@@ -12,9 +12,9 @@ namespace MrezeProjekat.Models
 {
     public class Request
     {
-        private IPEndPoint _sender;
-        private int _nodeNum;
-        private int _maxMessages; // Maksimalni broj poruka, nakon kog se lanac prekida 
+        private IPEndPoint _sender; // IP endpoint of the client sending the request
+        private int _nodeNum;       // Number of nodes in the path (N)
+        private int _maxMessages;   // Number of messages before the connection is closed 
 
         public Request() { }
         public Request(IPEndPoint senderPoint, int nodeNumber, int maxMessagesNum)

@@ -1,6 +1,7 @@
 ﻿using MrezeProjekat;
 using MrezeProjekat.Helpers;
 using MrezeProjekat.Models;
+using Spectre.Console;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,89 +9,105 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
+using System.Security.Policy;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-
-using Spectre.Console;
 
 namespace Server
 {
     public class Server
     {
-        static async Task Main(string[] args)
+        static void Main(string[] args)
         {
             // Create the server socket (TCP)
             Socket serverSocketTCP = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-
             serverSocketTCP.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true); 
-            IPEndPoint serverEP = new IPEndPoint(IPAddress.Loopback, Networking.TcpServerPort);
+            IPEndPoint serverTCP_EP = new IPEndPoint(IPAddress.Any, Networking.TcpServerPort);
 
-            serverSocketTCP.Bind(serverEP);
+            serverSocketTCP.Bind(serverTCP_EP);
             serverSocketTCP.Listen(10);
 
             // Create the server socket (UDP)
             Socket serverSocketUDP = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            serverSocketUDP.Bind(new IPEndPoint(IPAddress.Loopback, Networking.UdpServerPort));
+            IPEndPoint serverUDP_EP = new IPEndPoint(IPAddress.Any, Networking.UdpServerPort);
 
+            serverSocketUDP.Bind(serverUDP_EP);
+
+            // Enabling the UTF8 for the Dashboard
             Console.OutputEncoding = System.Text.Encoding.UTF8;
-            Menu.OnionLogo();
 
             bool endStringReceived = false;
 
-            #region spectre
+            Menu.OnionLogo();
 
-            ServerDashboard dashboard = new ServerDashboard();
-
-            Task dashTask = Task.Run(() =>
-            {
-                AnsiConsole.Live(dashboard.Root)
-                .Start(ctx =>
-                {
-                    while (!endStringReceived)
-                    {
-                        dashboard.RefreshPanels();
-                        ctx.Refresh();
-                        Thread.Sleep(100);
-                    }
-                });
-
-            });
-
-            #endregion  
-
+            #region Connecting with client
             // Form the TCP connection with client
-            dashboard.AddClient("Waiting for client...");
+            AnsiConsole.MarkupLine("[yellow]Waiting for client...[/]");
             Socket acceptedSocket = serverSocketTCP.Accept();
-            dashboard.AddClient($"Client connected: {(acceptedSocket.LocalEndPoint)}");
+            IPEndPoint clientEP = acceptedSocket.RemoteEndPoint as IPEndPoint;
+            AnsiConsole.MarkupLine($"[green]Client connected: {(acceptedSocket.RemoteEndPoint)}[/]\n");
+            #endregion
 
+            #region Client Request
             // recieve client request
             Request req = RecieveRequestFromClient(acceptedSocket);
-            dashboard.AddClient($"\nReceived request from: {acceptedSocket.LocalEndPoint as IPEndPoint}");
+            AnsiConsole.MarkupLine($"[yellow]Received request from: {acceptedSocket.LocalEndPoint as IPEndPoint}[/]");
+            #endregion
 
+            #region Instructions
             // send instructions (client only)
-            dashboard.AddClient("\nSending instructions to client...");
+            AnsiConsole.MarkupLine("[orange1]Sending instructions to client...[/]");
             Instructions ins = SendInstructionsToClient(acceptedSocket, req);
 
             // send instructions for every node
-            dashboard.AddClient("\nSending instructions to nodes...");
-            SendInstructionsForNodes(ins, req, serverSocketTCP, dashboard);
+            AnsiConsole.MarkupLine("[yellow]Sending instructions to nodes...[/]");
+            SendInstructionsForNodes(ins, req, serverSocketTCP);
+            #endregion
 
-            // recieve last udp package
-            // Placeholder za remote endpoint (popuniće se adresom pošiljaoca)
+            #region Last Node
+            // get the laststNode endpoint
             int lastNodePort = Networking.NodeBasePort + req.NodeNum - 1;
-            IPEndPoint lastNodeEP = new IPEndPoint(IPAddress.Loopback, lastNodePort);
-
+            IPEndPoint lastNodeEP = new IPEndPoint(IPAddress.Parse(clientEP.Address.ToString()), lastNodePort);
+            #endregion
 
             // cancellation token for server UDP listener
             CancellationTokenSource ctsListener = new CancellationTokenSource();
             CancellationToken tokenListener = ctsListener.Token;
 
-            Task listenerTask = Task.Run(() => ListenForNodeResponseUDP(req, ins, serverSocketUDP, lastNodeEP, tokenListener, dashboard), tokenListener);
-         
-            // zatvori sve na kraju
-            await listenerTask;
+            //Task listenerTask = Task.Run(() => ListenForNodeResponseUDP(req, ins, serverSocketUDP, lastNodeEP, tokenListener, dashboard), tokenListener);
 
+            while (!endStringReceived)
+            {
+
+                byte[] buffer = Networking.ListenForUDP(serverSocketUDP, lastNodeEP);
+                if (buffer.Length == 0) continue;
+
+                Message msg = Message.FromBytes(buffer);
+                AnsiConsole.MarkupLineInterpolated($"\t[Cyan][[SERVER]] recived message from [white]{lastNodeEP}[/]: [white italic]{msg.Content}[/][/]");
+
+                if (msg.Content.Equals(Networking.EndString))
+                {
+                    AnsiConsole.MarkupLine("[red]Client Disconnected[/]");
+                    AnsiConsole.MarkupLine("[yellow]Stopping Server...[/]");
+                    break;
+                }
+
+                Array.Clear(buffer, 0, buffer.Length);
+                string responseContent = $"SERVER RESPONSE to '{msg.Content}'";
+                Message response = CryptoHelper.CryptNTimes(responseContent, req.NodeNum, ins, false);
+
+                AnsiConsole.MarkupLineInterpolated($"\t[Cyan][[SERVER]] sent message to [white]{lastNodeEP}[/][/]");
+                buffer = response.ToBytes();
+                Networking.SendUdp(buffer, serverSocketUDP, lastNodeEP);
+            }
+
+
+            //Thread.Sleep(1000);
+
+            AnsiConsole.MarkupLine("[red]Onion nodes have been stopped.[/]");
+
+            #region Socket closing and cleanup
             acceptedSocket.Shutdown(SocketShutdown.Both);
             acceptedSocket.Close();
             acceptedSocket.Dispose();
@@ -99,6 +116,7 @@ namespace Server
             serverSocketTCP.Dispose();
 
             serverSocketUDP.Close();
+            #endregion
 
             Console.ReadKey();
         }
@@ -151,8 +169,9 @@ namespace Server
             return ins;
         }
        
-        public static void SendInstructionsForNodes(Instructions ins, Request req, Socket serverSocket, ServerDashboard dash)
+        public static void SendInstructionsForNodes(Instructions ins, Request req, Socket serverSocket)
         {
+            serverSocket.Listen(10);
             // send instructions for every node
             for (int i = 0; i < req.NodeNum; i++)
             {
@@ -165,22 +184,21 @@ namespace Server
                 Instructions nodeIns = new Instructions(nodeKey, prevEP, nextEP);
                 byte[] data = nodeIns.ToBytes();
 
-                // form IPEndPoint for the node
-                IPEndPoint nodeEP = new IPEndPoint(IPAddress.Loopback, Networking.NodeBasePort + i);
-
-                serverSocket.Listen(10);
+                // accept the node socket
                 Socket nodeSocket = serverSocket.Accept();
 
                 // handshake and send instructions
-                dash.AddServer($"\nWaiting handshake from Node[[{Networking.NodeBasePort + i}]]:");
+                AnsiConsole.MarkupLine($"[yellow1]Waiting handshake from [white]Node[[{Networking.NodeBasePort + i}]][/] [/]");
                 byte[] handshakeData = new byte[5];
                 nodeSocket.Receive(handshakeData);
 
+                // check if the message is handshake
                 if(Encoding.UTF8.GetString(handshakeData).Equals("READY"))
-                    dash.AddServer($"Handshake received from Node[[{Networking.NodeBasePort + i}]]");
+                    AnsiConsole.MarkupLine($"[yellow1]Handshake received from [white]Node[[{Networking.NodeBasePort + i}]][/] [/]");
 
-                Networking.SendTcp(data, nodeSocket, dash);
-                dash.AddServer($"Sending Node[[{Networking.NodeBasePort + i}]] {i + 1}  instructions:");
+                // send instructions
+                AnsiConsole.MarkupLine($"[yellow1]Sending instructions to [white]Node[[{Networking.NodeBasePort + i}]][/] [/]");
+                Networking.SendTcp(data, nodeSocket);
             }
         }
 
@@ -191,25 +209,22 @@ namespace Server
                 if (token.IsCancellationRequested)
                     break;
 
-                byte[] buffer = Networking.ListenForUDP(listenerSocket, nodeEP, dash);
+                byte[] buffer = Networking.ListenForUDP(listenerSocket, nodeEP);
+                if (buffer.Length == 0) continue;
 
                 Message msg = Message.FromBytes(buffer);
-                dash.AddInput($"[[SERVER]] recived message from {nodeEP}: {msg.Content}");
+                AnsiConsole.MarkupLine($"[[SERVER]] recived message from {nodeEP}: {msg.Content}");
 
                 if (msg.Content.Equals(Networking.EndString))
-                {
-                    buffer = (CryptoHelper.CryptNTimes(Networking.EndString, req.NodeNum, ins, false)).ToBytes();
-                    Networking.SendUdp(buffer, listenerSocket, nodeEP, dash);
                     break;
-                }
 
                 Array.Clear(buffer, 0, buffer.Length);
                 string responseContent = $"SERVER RESPONSE to '{msg.Content}'";
                 Message response = CryptoHelper.CryptNTimes(responseContent, req.NodeNum, ins, false);
                 
-                dash.AddInput($"[[SERVER]] sent message {nodeEP}");
+                AnsiConsole.MarkupLine($"[[SERVER]] sent message {nodeEP}");
                 buffer = response.ToBytes();
-                Networking.SendUdp(buffer, listenerSocket, nodeEP, dash);
+                Networking.SendUdp(buffer, listenerSocket, nodeEP);
             }
         }
 

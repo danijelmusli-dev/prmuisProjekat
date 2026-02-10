@@ -8,14 +8,14 @@ namespace MrezeProjekat
 {
     public class CryptoKey
     {
-        private byte[] _key;
-        private byte[] _iv;
+        private byte[] _key; // field for the key
+        private byte[] _iv;  // field for the initialization vector
 
         public CryptoKey() { }
         public CryptoKey(byte[] key, byte[] iv)
         {
             this._key = key;
-            this._iv = iv;
+            this._iv  = iv;
         }
 
         public byte[] Key => this._key;
